@@ -57,11 +57,16 @@ async function handleCodexResponses(req: Request, res: Response) {
 
   const chatBody = responsesToChat(req.body, provider);
   const upstreamUrl = `${trimTrailingSlash(provider.base_url)}/chat/completions`;
+  const originalModel = String(req.body?.model || '');
   const actualModel = String(chatBody.model || provider.model);
   const startTime = Date.now();
 
   logger.codexProxy.request(provider.id, actualModel);
-  logger.codexProxy.upstreamRequest(upstreamUrl, actualModel);
+  if (originalModel && originalModel !== actualModel) {
+    logger.codexProxy.upstreamRequest(upstreamUrl, `模型映射: ${originalModel} → ${actualModel}`);
+  } else {
+    logger.codexProxy.upstreamRequest(upstreamUrl, actualModel);
+  }
 
   try {
     const upstream = await fetch(upstreamUrl, {
@@ -98,12 +103,13 @@ async function handleCodexResponses(req: Request, res: Response) {
 
 function responsesToChat(body: any, provider: db.Provider): Record<string, JsonValue> {
   const messages = inputToMessages(body.instructions, body.input);
-  const model = provider.model || body.model;
-  const result: Record<string, JsonValue> = { model, messages, stream: Boolean(body.stream) };
+  // 优先使用 Codex 请求中的模型（用户在 CLI 中选择的），Provider 默认模型仅作兜底
+  const requestedModel = body.model || provider.model;
+  const result: Record<string, JsonValue> = { model: requestedModel, messages, stream: Boolean(body.stream) };
 
   const maxTokens = body.max_output_tokens ?? body.max_tokens ?? body.max_completion_tokens;
   if (maxTokens !== undefined) {
-    if (supportsMaxCompletionTokens(String(model || ''))) result.max_completion_tokens = maxTokens;
+    if (supportsMaxCompletionTokens(String(requestedModel || ''))) result.max_completion_tokens = maxTokens;
     else result.max_tokens = maxTokens;
   }
   if (body.temperature !== undefined) result.temperature = body.temperature;
