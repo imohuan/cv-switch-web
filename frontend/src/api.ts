@@ -102,6 +102,8 @@ export const api = {
     request<Profile>(`/profiles/${id}/apply`, { method: 'POST' }),
   getProfileConfig: (id: string) =>
     request<{ home_dir: string; app_type: string; files: Array<{ label: string; content: string; exists: boolean }> }>(`/profiles/${id}/config`),
+  getAppConfig: (appType: string) =>
+    request<{ home_dir: string; app_type: string; files: Array<{ label: string; content: string; exists: boolean }> }>(`/app/${appType}/config`),
   deleteProfile: (id: string) =>
     request<boolean>(`/profiles/${id}`, { method: 'DELETE' }),
 

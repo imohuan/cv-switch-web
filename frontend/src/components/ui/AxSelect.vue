@@ -12,12 +12,14 @@ const SEARCH_SIZE_FIXED: Record<ControlSize, string> = {
   sm: 'h-5 px-2 text-body-sm',
   md: 'h-6 px-2.5 text-label-md',
   lg: 'h-7 px-3 text-label-md',
+  xl: 'h-9 px-4 text-label-md',
 }
 const SEARCH_SIZE_FLEX: Record<ControlSize, string> = {
   xs: 'min-h-[18px] px-1.5 py-px text-body-sm',
   sm: 'min-h-5 px-2 py-0.5 text-body-sm',
   md: 'min-h-6 px-2.5 py-1 text-label-md',
   lg: 'min-h-7 px-3 py-1.5 text-label-md',
+  xl: 'min-h-9 px-4 py-2 text-label-md',
 }
 
 const props = withDefaults(

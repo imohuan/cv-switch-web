@@ -4,6 +4,7 @@ import os from 'os';
 import { stringify as stringifyToml } from 'smol-toml';
 import type { Provider, Profile } from '../db.js';
 import { bestFormatForApp, claudeModels, codexModels, publicBaseUrl } from './providerConfig.js';
+import { generateCodexModelCatalog } from './codexCatalog.js';
 
 const PROFILES_DIR = path.join(os.homedir(), '.cc-switch-web', 'profiles');
 
@@ -204,26 +205,49 @@ function envKey(provider: Provider): string {
 function writeCodexProfile(homeDir: string, provider: Provider) {
   const codexDir = path.join(homeDir, '.codex');
   const format = bestFormatForApp(provider, 'codex');
-  const key = 'OPENAI_API_KEY';
   const models = codexModels(provider);
-  const baseUrl = format === 'openai_chat'
+  const useProxy = format === 'openai_chat';
+  const baseUrl = useProxy
     ? codexChatAdapterBaseUrl(provider)
     : provider.base_url;
-  atomicWrite(path.join(codexDir, 'auth.json'), JSON.stringify({ [key]: format === 'openai_chat' ? 'PROXY_MANAGED' : provider.api_key }, null, 2));
-  atomicWrite(path.join(codexDir, 'config.toml'), stringifyToml({
-    model: models.defaultModel,
-    model_provider: 'custom',
-    model_catalog_json: path.join(codexDir, 'cc-switch-web-model-catalog.json'),
-    model_providers: {
-      custom: {
-        name: provider.name,
-        base_url: baseUrl,
-        env_key: key,
-        wire_api: 'responses',
+
+  // Codex 的 env_key 模式要求环境变量存在，终端启动时未设会报
+  // "Missing environment variable: OPENAI_API_KEY"。
+  // 改用 api_key 直接写入 config.toml，Codex 从文件读取，不依赖环境变量。
+  // Proxy 模式下 Proxy 会注入真实 key，这里写 PROXY_MANAGED 占位即可。
+  const apiKey = useProxy ? 'PROXY_MANAGED' : provider.api_key;
+
+  // auth.json 仍然写入，部分 Codex 版本会检查，保留兼容性。
+  atomicWrite(
+    path.join(codexDir, 'auth.json'),
+    JSON.stringify({ OPENAI_API_KEY: apiKey }, null, 2),
+  );
+
+  atomicWrite(
+    path.join(codexDir, 'config.toml'),
+    stringifyToml({
+      model: models.defaultModel,
+      model_provider: 'custom',
+      model_catalog_json: path.join(codexDir, 'cc-switch-web-model-catalog.json'),
+      model_providers: {
+        custom: {
+          name: provider.name,
+          base_url: baseUrl,
+          // api_key 直接内联，不依赖环境变量
+          api_key: apiKey,
+          wire_api: 'responses',
+          // 自定义 provider 不需要 OpenAI OAuth 登录
+          requires_openai_auth: false,
+          supports_websockets: false,
+        },
       },
-    },
-  }));
-  atomicWrite(path.join(codexDir, 'cc-switch-web-model-catalog.json'), JSON.stringify(codexModelCatalog(provider), null, 2));
+    }),
+  );
+
+  atomicWrite(
+    path.join(codexDir, 'cc-switch-web-model-catalog.json'),
+    JSON.stringify(generateCodexModelCatalog(provider), null, 2),
+  );
 }
 
 function codexChatAdapterBaseUrl(provider: Provider): string {
@@ -260,24 +284,6 @@ function writeClaudeProfile(homeDir: string, provider: Provider) {
       ...(models.opusModel ? { ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_OPUS } : {}),
     },
   }, null, 2));
-}
-
-function codexModelCatalog(provider: Provider) {
-  const { models } = codexModels(provider);
-  return {
-    models: models.map((item) => ({
-      id: item.model,
-      name: item.displayName || item.model,
-      model: item.model,
-      provider: 'custom',
-      wire_api: 'responses',
-      tools: true,
-      parallel_tool_calls: item.supportsParallelToolCalls ?? true,
-      context_window: Number(item.contextWindow) || 128000,
-      input_modalities: item.inputModalities || ['text'],
-      ...(item.baseInstructions ? { base_instructions: item.baseInstructions } : {}),
-    })),
-  };
 }
 
 function claudeChatAdapterBaseUrl(provider: Provider): string {

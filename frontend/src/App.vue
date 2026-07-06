@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { Toaster } from 'vue-sonner'
-import { useNotify } from './components/ui'
+import { useNotify, AxJsonViewer } from './components/ui'
 import AxModelSelect from './components/ui/AxModelSelect.vue'
 import { api, type Provider, type Profile, type AppStatus, type ProviderExtraConfig, type ApiFormat } from './api'
 
@@ -53,12 +53,34 @@ function getCommandForProfile(p: Profile): string {
   return p.commands?.[plat] || p.command
 }
 
+/** 配置文件类型（含预解析的 JSON 数据） */
+type ConfigFile = { label: string; content: string; exists: boolean; parsed?: unknown }
+
+/** 尝试解析 JSON 文件内容，失败返回 null */
+function tryParseJson(file: { label: string; content: string }): unknown | null {
+  if (!file.label.endsWith('.json')) return null
+  try { return JSON.parse(file.content) } catch { return null }
+}
+
 /** Profile 本地配置查看 */
 const expandedConfigId = ref<string | null>(null)
-const profileConfigs = ref<Record<string, { home_dir: string; app_type: string; files: Array<{ label: string; content: string; exists: boolean }> } | null>>({})
+const profileConfigs = ref<Record<string, { home_dir: string; app_type: string; files: ConfigFile[] } | null>>({})
 const loadingConfig = ref<string | null>(null)
 /** 文件级别展开/折叠 */
 const expandedFiles = ref<Set<string>>(new Set())
+
+/** 概览页 — App Tab + 全局配置查看 */
+const statusAppTab = ref<string>('codex')
+const STATUS_APPS = [
+  { id: 'codex', name: 'Codex CLI', icon: 'terminal' },
+  { id: 'claude', name: 'Claude Code', icon: 'auto_awesome' },
+  { id: 'gemini', name: 'Gemini CLI', icon: 'diamond' },
+  { id: 'opencode', name: 'OpenCode', icon: 'code' },
+]
+const expandedAppConfig = ref<string | null>(null)
+const appConfigs = ref<Record<string, { home_dir: string; app_type: string; files: ConfigFile[] } | null>>({})
+const loadingAppConfig = ref<string | null>(null)
+const expandedAppFiles = ref<Set<string>>(new Set())
 
 function toggleProfileConfig(profile: Profile) {
   if (expandedConfigId.value === profile.id) {
@@ -89,13 +111,51 @@ async function loadProfileConfig(id: string) {
   try {
     const res = await api.getProfileConfig(id)
     if (res.success && res.data) {
-      profileConfigs.value[id] = res.data
+      profileConfigs.value[id] = { ...res.data, files: res.data.files.map(f => ({ ...f, parsed: tryParseJson(f) })) }
     } else {
       profileConfigs.value[id] = { home_dir: '', app_type: '', files: [{ label: '错误', content: res.error || '读取失败', exists: false }] }
     }
   } catch (e: any) {
     profileConfigs.value[id] = { home_dir: '', app_type: '', files: [{ label: '错误', content: e.message, exists: false }] }
   } finally { loadingConfig.value = null }
+}
+
+/** 概览页 — 全局 App 配置查看 */
+function toggleAppConfig(appType: string) {
+  if (expandedAppConfig.value === appType) {
+    expandedAppConfig.value = null
+    return
+  }
+  expandedAppConfig.value = appType
+  loadAppConfig(appType)
+}
+
+function toggleAppFileExpand(appType: string, fileIdx: number) {
+  const key = `${appType}-${fileIdx}`
+  if (expandedAppFiles.value.has(key)) {
+    expandedAppFiles.value.delete(key)
+    expandedAppFiles.value = new Set(expandedAppFiles.value)
+  } else {
+    expandedAppFiles.value.add(key)
+    expandedAppFiles.value = new Set(expandedAppFiles.value)
+  }
+}
+function expandedAppFileKey(key: string): boolean {
+  return expandedAppFiles.value.has(key)
+}
+
+async function loadAppConfig(appType: string) {
+  loadingAppConfig.value = appType
+  try {
+    const res = await api.getAppConfig(appType)
+    if (res.success && res.data) {
+      appConfigs.value[appType] = { ...res.data, files: res.data.files.map(f => ({ ...f, parsed: tryParseJson(f) })) }
+    } else {
+      appConfigs.value[appType] = { home_dir: '', app_type: appType, files: [{ label: '错误', content: res.error || '读取失败', exists: false }] }
+    }
+  } catch (e: any) {
+    appConfigs.value[appType] = { home_dir: '', app_type: appType, files: [{ label: '错误', content: e.message, exists: false }] }
+  } finally { loadingAppConfig.value = null }
 }
 
 // Provider form
@@ -330,36 +390,123 @@ function setNewApiPreset() { formProviderType.value = 'newapi'; formCapabilities
             </div>
           </div>
 
-          <div class="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-ax-md">
-            <div v-for="appType in ['codex', 'claude', 'gemini', 'opencode']" :key="appType"
-              class="bg-surface-container-lowest border rounded-lg p-ax-md transition-colors"
-              :class="statuses[appType]?.current_provider_id ? 'border-primary/40' : 'border-outline-variant'">
-              <div class="flex items-center justify-between mb-ax-sm">
-                <h4 class="font-label-md text-label-md font-semibold text-primary">{{ APP_LABELS[appType] || appType }}</h4>
-                <span class="w-2.5 h-2.5 rounded-full" :class="statuses[appType]?.current_provider_id ? 'bg-emerald-500 animate-pulse' : 'bg-outline'" />
-              </div>
+          <!-- App Tab Bar -->
+          <div class="flex gap-ax-xs border-b border-outline-variant mb-ax-md">
+            <button
+              v-for="app in STATUS_APPS" :key="app.id"
+              class="relative flex items-center gap-ax-xs px-ax-md py-ax-sm font-label-md text-label-md transition-all duration-150 cursor-pointer border-b-2 -mb-px"
+              :class="statusAppTab === app.id
+                ? 'border-primary text-primary font-semibold'
+                : 'border-transparent text-secondary hover:text-primary hover:bg-surface-container-low'"
+              @click="statusAppTab = app.id"
+            >
+              <span class="material-symbols-outlined text-[18px]">{{ app.icon }}</span>
+              <span>{{ app.name }}</span>
+              <span class="w-2 h-2 rounded-full ml-ax-xs" :class="statuses[app.id]?.current_provider_id ? 'bg-emerald-500' : 'bg-outline'" />
+            </button>
+          </div>
 
-              <template v-if="statuses[appType]?.current_provider_id">
-                <div class="space-y-ax-xs text-body-sm">
-                  <div class="flex justify-between">
-                    <span class="text-secondary">Provider</span>
-                    <span class="text-primary font-medium truncate max-w-[180px]">{{ statuses[appType].current_provider_name }}</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-secondary">Model</span>
-                    <span class="text-primary font-medium truncate max-w-[180px]">{{ statuses[appType].live_config_status?.model || '-' }}</span>
+          <!-- Active Tab Content -->
+          <div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-ax-md">
+            <template v-if="statuses[statusAppTab]?.current_provider_id">
+              <!-- Connected state -->
+              <div class="flex items-start justify-between gap-ax-md mb-ax-md">
+                <div class="flex items-center gap-ax-sm">
+                  <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <div>
+                    <p class="font-label-md text-label-md font-semibold text-primary">已连接</p>
+                    <p class="font-body-sm text-body-sm text-secondary mt-0.5">{{ statuses[statusAppTab].current_provider_name }}</p>
                   </div>
                 </div>
-                <AxButton size="lg" variant="outline" class="mt-ax-md w-full" @click="handleClear(appType)">
+                <AxButton size="lg" variant="outline" @click="handleClear(statusAppTab)">
                   <span class="material-symbols-outlined text-[16px]">link_off</span>
-                  <span>断开连接</span>
+                  <span>断开</span>
                 </AxButton>
-              </template>
-              <template v-else>
-                <p class="font-body-sm text-body-sm text-on-surface-variant mb-ax-sm">未配置 Provider</p>
-                <AxSelect :options="providerOptions" placeholder="选择 Provider" size="lg" trigger-max-width="100%"
-                  @update:model-value="(v: string) => handleSwitch(appType, v)" />
-              </template>
+              </div>
+
+              <div class="grid grid-cols-3 gap-ax-sm">
+                <div class="bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
+                  <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">Provider</span>
+                  <p class="font-label-md text-label-md text-primary mt-0.5 truncate">{{ statuses[statusAppTab].current_provider_name }}</p>
+                </div>
+                <div class="bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
+                  <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">Model</span>
+                  <p class="font-label-md text-label-md text-primary mt-0.5 truncate">{{ statuses[statusAppTab].live_config_status?.model || '-' }}</p>
+                </div>
+                <div class="bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
+                  <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">Base URL</span>
+                  <p class="font-label-md text-label-md text-primary mt-0.5 truncate">{{ statuses[statusAppTab].live_config_status?.base_url || '-' }}</p>
+                </div>
+              </div>
+
+              <!-- 切换 Provider -->
+              <div class="mt-ax-sm bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
+                <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider block mb-ax-xs">切换 Provider</span>
+                <AxSelect :options="providerOptions" :placeholder="`选择新 Provider 替换当前连接`" size="lg" trigger-max-width="100%"
+                  @update:model-value="(v: string) => handleSwitch(statusAppTab, v)" />
+              </div>
+            </template>
+
+            <template v-else>
+              <!-- Disconnected state -->
+              <div class="flex items-center gap-ax-sm mb-ax-md">
+                <span class="w-3 h-3 rounded-full bg-outline shrink-0" />
+                <div>
+                  <p class="font-label-md text-label-md font-semibold text-secondary">未连接</p>
+                  <p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">选择一个 Provider 进行连接</p>
+                </div>
+              </div>
+              <AxSelect :options="providerOptions" placeholder="选择 Provider" size="lg" trigger-max-width="100%"
+                @update:model-value="(v: string) => handleSwitch(statusAppTab, v)" />
+            </template>
+
+            <!-- 查看本地配置（折叠面板） -->
+            <div class="mt-ax-md border-t border-outline-variant pt-ax-md">
+              <button
+                class="flex items-center gap-ax-xs font-label-md text-label-md text-secondary hover:text-primary transition-colors cursor-pointer border-0 bg-transparent outline-none"
+                @click="toggleAppConfig(statusAppTab)"
+              >
+                <span class="material-symbols-outlined text-[18px] leading-none transition-transform duration-200" :class="{ 'rotate-90': expandedAppConfig === statusAppTab }">chevron_right</span>
+                <span class="material-symbols-outlined text-[16px]">folder_open</span>
+                <span>查看本地配置文件</span>
+              </button>
+
+              <div v-if="expandedAppConfig === statusAppTab" class="mt-ax-sm border border-outline-variant rounded-lg overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                <div class="bg-surface-container-highest px-3 py-2 flex items-center gap-2">
+                  <span class="material-symbols-outlined text-[14px] text-secondary">home</span>
+                  <span class="font-label-md text-[11px] text-secondary font-medium uppercase tracking-wider">全局配置目录</span>
+                  <span class="font-body-sm text-[10px] text-outline ml-auto">{{ appConfigs[statusAppTab]?.home_dir || '' }}</span>
+                </div>
+                <!-- 加载中 -->
+                <div v-if="loadingAppConfig === statusAppTab && !appConfigs[statusAppTab]" class="px-4 py-4 flex items-center gap-2">
+                  <span class="material-symbols-outlined text-[16px] text-secondary animate-spin">progress_activity</span>
+                  <span class="font-body-sm text-[12px] text-secondary">读取配置中...</span>
+                </div>
+                <!-- 文件列表 -->
+                <template v-else-if="appConfigs[statusAppTab]">
+                  <div
+                    v-for="(file, fi) in appConfigs[statusAppTab]!.files"
+                    :key="fi"
+                    class="border-t border-outline-variant/50 last:border-b-0"
+                  >
+                    <button
+                      class="w-full px-3 py-2 flex items-center gap-2 hover:bg-surface-container-low transition-colors cursor-pointer text-left"
+                      :class="{ 'opacity-50': !file.exists }"
+                      @click="toggleAppFileExpand(statusAppTab, fi)"
+                    >
+                      <span class="material-symbols-outlined text-[14px]" :class="file.exists ? 'text-success' : 'text-error'">
+                        {{ file.exists ? 'description' : 'error' }}
+                      </span>
+                      <span class="font-label-md text-[12px] font-medium text-primary truncate">{{ file.label }}</span>
+                      <span class="material-symbols-outlined text-[14px] text-secondary ml-auto transition-transform" :class="expandedAppFileKey(`${statusAppTab}-${fi}`) ? 'rotate-180' : ''">expand_more</span>
+                    </button>
+                    <div v-if="expandedAppFileKey(`${statusAppTab}-${fi}`)" class="px-4 py-3 bg-surface-container-lowest border-t border-outline-variant/30">
+                      <AxJsonViewer v-if="file.parsed" :data="file.parsed" :expand-level="2" class="max-h-80 overflow-y-auto" />
+                      <pre v-else class="font-mono text-[11px] text-on-surface whitespace-pre-wrap break-all leading-relaxed max-h-80 overflow-y-auto">{{ file.content }}</pre>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
         </section>
@@ -441,7 +588,7 @@ function setNewApiPreset() { formProviderType.value = 'newapi'; formCapabilities
                       >{{ plat.label }}</button>
                     </div>
                   </div>
-                  <p class="font-body-sm text-[10px] text-secondary mb-1">{{ COMMAND_PLATFORMS.find(p => p.value === (profileCommandPlatform[p.id] || 'bash'))?.desc }}</p>
+                  <p class="font-body-sm text-[10px] text-secondary mb-1">{{ COMMAND_PLATFORMS.find(plat => plat.value === (profileCommandPlatform[p.id] || 'bash'))?.desc }}</p>
                   <code class="block font-label-md text-label-md text-primary mt-0.5 break-all select-all">{{ getCommandForProfile(p) }}</code>
                 </div>
 
@@ -460,7 +607,7 @@ function setNewApiPreset() { formProviderType.value = 'newapi'; formCapabilities
                   <!-- 文件列表 -->
                   <template v-else-if="profileConfigs[p.id]">
                     <div
-                      v-for="(file, fi) in profileConfigs[p.id].files"
+                      v-for="(file, fi) in profileConfigs[p.id]!.files"
                       :key="fi"
                       class="border-t border-outline-variant/50 last:border-b-0"
                     >
@@ -476,7 +623,8 @@ function setNewApiPreset() { formProviderType.value = 'newapi'; formCapabilities
                         <span class="material-symbols-outlined text-[14px] text-secondary ml-auto transition-transform" :class="expandedFileKey(`${p.id}-${fi}`) ? 'rotate-180' : ''">expand_more</span>
                       </button>
                       <div v-if="expandedFileKey(`${p.id}-${fi}`)" class="px-4 py-3 bg-surface-container-lowest border-t border-outline-variant/30">
-                        <pre class="font-mono text-[11px] text-on-surface whitespace-pre-wrap break-all leading-relaxed max-h-80 overflow-y-auto">{{ file.content }}</pre>
+                        <AxJsonViewer v-if="file.parsed" :data="file.parsed" :expand-level="2" class="max-h-80 overflow-y-auto" />
+                        <pre v-else class="font-mono text-[11px] text-on-surface whitespace-pre-wrap break-all leading-relaxed max-h-80 overflow-y-auto">{{ file.content }}</pre>
                       </div>
                     </div>
                   </template>

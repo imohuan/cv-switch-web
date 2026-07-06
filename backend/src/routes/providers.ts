@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import * as db from '../db.js';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { writeCodexConfig, getCodexConfigStatus } from '../services/codex.js';
 import { writeClaudeConfig, getClaudeConfigStatus } from '../services/claude.js';
 import { writeGeminiConfig, getGeminiConfigStatus } from '../services/gemini.js';
@@ -357,6 +358,75 @@ router.get('/profiles/:id/config', (req: Request, res: Response) => {
     });
 
     res.json({ success: true, data: { home_dir: homeDir, app_type: profile.app_type, files } });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── 读取全局 App 本地配置文件（非 Profile，直接读取用户 HOME 目录） ──
+
+/** 根据应用类型返回全局配置文件路径列表 */
+function globalConfigFiles(appType: string): Array<{ label: string; path: string }> {
+  const home = os.homedir();
+  switch (appType) {
+    case 'claude':
+      return [
+        { label: '.claude/settings.json', path: path.join(home, '.claude', 'settings.json') },
+      ];
+    case 'codex':
+      return [
+        { label: '.codex/auth.json', path: path.join(home, '.codex', 'auth.json') },
+        { label: '.codex/config.toml', path: path.join(home, '.codex', 'config.toml') },
+        { label: '.codex/cc-switch-web-model-catalog.json', path: path.join(home, '.codex', 'cc-switch-web-model-catalog.json') },
+      ];
+    case 'gemini':
+      return [
+        { label: '.gemini/.env', path: path.join(home, '.gemini', '.env') },
+        { label: '.gemini/settings.json', path: path.join(home, '.gemini', 'settings.json') },
+      ];
+    case 'opencode':
+      return [
+        { label: 'opencode.json', path: path.join(home, '.config', 'opencode', 'opencode.json') },
+      ];
+    default:
+      return [];
+  }
+}
+
+router.get('/app/:appType/config', (req: Request, res: Response) => {
+  try {
+    const { appType } = req.params;
+    if (!VALID_APPS.includes(appType as any)) {
+      res.status(400).json({ success: false, error: `Invalid app type. Must be one of: ${VALID_APPS.join(', ')}` });
+      return;
+    }
+
+    const homeDir = os.homedir();
+    const configFiles = globalConfigFiles(appType);
+
+    const files: Array<{ label: string; content: string; exists: boolean }> = configFiles.map(f => {
+      let content = '';
+      let exists = false;
+      if (fs.existsSync(f.path)) {
+        try {
+          content = fs.readFileSync(f.path, 'utf-8');
+          // 对敏感字段做脱敏
+          if (f.label.endsWith('.json')) {
+            content = content.replace(/("api[_-]?key"|"token"|"ANTHROPIC_API_KEY"|"ANTHROPIC_AUTH_TOKEN"|"GEMINI_API_KEY"|"OPENAI_API_KEY")\s*:\s*"[^"]*"/gi,
+              (_, keyName) => `${keyName}: "***MASKED***"`);
+          } else if (f.label.endsWith('.env')) {
+            content = content.replace(/(API_KEY|TOKEN|KEY)\s*=\s*.+/gi,
+              (_, keyName) => `${keyName}=***MASKED***`);
+          }
+        } catch { content = '(读取失败)'; }
+        exists = true;
+      } else {
+        content = '(文件不存在)';
+      }
+      return { label: f.label, content, exists };
+    });
+
+    res.json({ success: true, data: { home_dir: homeDir, app_type: appType, files } });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

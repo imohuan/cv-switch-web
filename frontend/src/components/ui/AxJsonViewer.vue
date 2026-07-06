@@ -251,7 +251,7 @@ watch(
         <div class="absolute top-0 bottom-0 left-[7px] z-0 w-0 border-l border-dashed border-outline-variant/40 transition-colors group-hover/tree:border-outline/50" />
         <div class="relative z-10 pl-4">
           <AxJsonViewer
-            v-for="(val, key, index) in parsedData as any"
+            v-for="(val, key, index) in (parsedData as Record<string, any>)"
             :key="key"
             :node-key="dataType === 'array' ? null : key"
             :data="val"
