@@ -42,6 +42,15 @@ function copyClaudeBinary(homeDir: string) {
   }
 }
 
+/** 将全局 .claude.json（认证状态）复制到 Profile HOME，避免 "Not logged in" */
+function copyClaudeAuthState(homeDir: string) {
+  const globalAuth = path.join(os.homedir(), '.claude.json');
+  const profileAuth = path.join(homeDir, '.claude.json');
+  if (fs.existsSync(globalAuth)) {
+    fs.copyFileSync(globalAuth, profileAuth);
+  }
+}
+
 function atomicWrite(filePath: string, content: string) {
   ensureDir(path.dirname(filePath));
   const tmpPath = `${filePath}.tmp`;
@@ -66,6 +75,7 @@ export function writeProfileConfig(profile: Profile, provider: Provider): Profil
       case 'claude':
         writeClaudeProfile(homeDir, effectiveProvider);
         copyClaudeBinary(homeDir);
+        copyClaudeAuthState(homeDir);
         break;
       case 'gemini':
         writeGeminiProfile(homeDir, effectiveProvider);
@@ -133,19 +143,49 @@ const APP_COMMANDS: Record<string, string> = {
 export function launchCommands(profile: Profile, homeDir = profileHomeDir(profile)): LaunchCommands {
   const appCmd = APP_COMMANDS[profile.app_type] || profile.app_type;
 
-  // Bash (Linux/macOS/Git Bash) — 使用单引号包裹路径
-  const bashHome = shellQuote(homeDir);
-  const bash = `HOME=${bashHome} ${appCmd}`;
+  if (profile.app_type === 'claude') {
+    // Claude Code 在 Windows 上 HOME 无效，CLAUDE_CONFIG_DIR 会导致找不到凭证。
+    // 方案：直接用环境变量覆盖 ANTHROPIC_BASE_URL / API_KEY / MODEL，
+    // Claude Code 读取全局 ~/.claude/ 的凭证和 settings，env vars 优先级最高。
+    const envVars = readClaudeEnvVars(homeDir);
+    if (envVars) {
+      // Bash — 前缀环境变量
+      const bashParts = Object.entries(envVars).map(([k, v]) => `${k}=${shellQuote(String(v))}`);
+      const bash = `${bashParts.join(' ')} ${appCmd}`;
+      // PowerShell
+      const psParts = Object.entries(envVars).map(([k, v]) => `$env:${k}='${String(v).replace(/'/g, "''")}'`);
+      const powershell = `${psParts.join('; ')}; ${appCmd}`;
+      // CMD
+      const cmdParts = Object.entries(envVars).map(([k, v]) => `set ${k}=${String(v).replace(/&/g, '^^&')}`);
+      const cmd = `${cmdParts.join(' && ')} && ${appCmd}`;
+      return { bash, powershell, cmd };
+    }
+    // fallback: 没有找到 settings.json，用 HOME 方式
+  }
 
-  // PowerShell — 路径中的单引号需要双写转义
+  // 其他应用（Codex / Gemini / OpenCode）使用 HOME 方式
+  const bash = `HOME=${shellQuote(homeDir)} ${appCmd}`;
   const psHome = homeDir.replace(/'/g, "''");
   const powershell = `$env:HOME='${psHome}'; ${appCmd}`;
-
-  // CMD — 路径用双引号包裹
   const cmdHome = homeDir.replace(/"/g, '\\"');
   const cmd = `set HOME="${cmdHome}" && ${appCmd}`;
-
   return { bash, powershell, cmd };
+}
+
+/** 读取 Profile 的 Claude settings.json，提取 env 块 */
+function readClaudeEnvVars(homeDir: string): Record<string, string> | null {
+  try {
+    const settingsPath = path.join(homeDir, '.claude', 'settings.json');
+    if (!fs.existsSync(settingsPath)) return null;
+    const raw = fs.readFileSync(settingsPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (parsed.env && typeof parsed.env === 'object') {
+      return parsed.env as Record<string, string>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /** 向后兼容：仅返回 Bash 格式 */
@@ -196,16 +236,28 @@ function writeClaudeProfile(homeDir: string, provider: Provider) {
   const baseUrl = format === 'openai_chat'
     ? claudeChatAdapterBaseUrl(provider)
     : provider.base_url;
-  const token = format === 'openai_chat' ? 'PROXY_MANAGED' : provider.api_key;
+  const token = format === 'openai_chat'
+    ? provider.api_key  // 使用 Provider 真实 key，Claude Code 已批准此 key
+    : provider.api_key;
+
+  // Claude Code v2.1.x 客户端内置模型名称白名单，自定义模型名会被拒绝。
+  // 不同角色用不同的 Claude 模型名（当前非退役版本），Proxy 根据名称映射到 Provider 实际模型：
+  //   claude-sonnet-5            → sonnetModel / defaultModel
+  //   claude-haiku-4-5-20251001  → haikuModel / smallFastModel
+  //   claude-opus-4-8            → opusModel / defaultModel
+  const CLAUDE_SONNET = 'claude-sonnet-5';
+  const CLAUDE_HAIKU  = 'claude-haiku-4-5';
+  const CLAUDE_OPUS   = 'claude-opus-4-8';
+
   atomicWrite(path.join(homeDir, '.claude', 'settings.json'), JSON.stringify({
     env: {
       ANTHROPIC_BASE_URL: baseUrl,
       ANTHROPIC_API_KEY: token,
-      ...(models.defaultModel ? { ANTHROPIC_MODEL: models.defaultModel } : {}),
-      ...(models.smallFastModel ? { ANTHROPIC_SMALL_FAST_MODEL: models.smallFastModel } : {}),
-      ...(models.haikuModel ? { ANTHROPIC_DEFAULT_HAIKU_MODEL: models.haikuModel } : {}),
-      ...(models.sonnetModel ? { ANTHROPIC_DEFAULT_SONNET_MODEL: models.sonnetModel } : {}),
-      ...(models.opusModel ? { ANTHROPIC_DEFAULT_OPUS_MODEL: models.opusModel } : {}),
+      ANTHROPIC_MODEL: CLAUDE_SONNET,
+      ...(models.smallFastModel ? { ANTHROPIC_SMALL_FAST_MODEL: CLAUDE_HAIKU } : {}),
+      ...(models.haikuModel ? { ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_HAIKU } : {}),
+      ...(models.sonnetModel ? { ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_SONNET } : {}),
+      ...(models.opusModel ? { ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_OPUS } : {}),
     },
   }, null, 2));
 }

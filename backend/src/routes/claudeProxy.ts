@@ -1,10 +1,25 @@
 import { Router, Request, Response } from 'express';
 import * as db from '../db.js';
 import { logger } from '../services/logger.js';
+import { parseProviderExtra } from '../services/providerConfig.js';
 
 const router = Router();
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+// Claude Code 启动时发 HEAD 请求探测服务器是否存活
+router.head('/claude/:providerId', (req: Request, res: Response) => {
+  const provider = db.getProviderById(req.params.providerId);
+  res.status(provider ? 200 : 404).end();
+});
+router.head('/claude/:providerId/v1', (req: Request, res: Response) => {
+  const provider = db.getProviderById(req.params.providerId);
+  res.status(provider ? 200 : 404).end();
+});
+router.head('/claude/:providerId/v1/messages', (req: Request, res: Response) => {
+  const provider = db.getProviderById(req.params.providerId);
+  res.status(provider ? 200 : 404).end();
+});
 
 router.get('/claude/:providerId/v1/models', (req: Request, res: Response) => {
   const provider = db.getProviderById(req.params.providerId);
@@ -14,17 +29,12 @@ router.get('/claude/:providerId/v1/models', (req: Request, res: Response) => {
     return;
   }
 
-  // 从 provider extra_config 中提取 Claude 模型列表，确保 ANTHROPIC_MODEL 等配置值被识别为有效模型
-  let extra: any = {};
-  try { extra = JSON.parse(provider.extra_config || '{}'); } catch { /* ignore */ }
-  const claudeModels = new Set<string>();
-  claudeModels.add(provider.model);
-  const mc = extra.claude || {};
-  for (const k of ['defaultModel', 'smallFastModel', 'haikuModel', 'sonnetModel', 'opusModel']) {
-    if (mc[k]) claudeModels.add(mc[k]);
-  }
-
-  const models = [...claudeModels].map(id => ({ id, type: 'model', display_name: id }));
+  // 返回所有 Claude Code 白名单内的模型名，Proxy 会根据名称映射到 Provider 实际模型
+  const models = [
+    { id: 'claude-sonnet-5', type: 'model', display_name: 'Sonnet 5' },
+    { id: 'claude-haiku-4-5', type: 'model', display_name: 'Haiku 4.5' },
+    { id: 'claude-opus-4-8', type: 'model', display_name: 'Opus 4.8' },
+  ];
   logger.claudeProxy.info('GET /v1/models', { providerId: provider.id, count: models.length });
   res.json({ data: models });
 });
@@ -52,10 +62,12 @@ async function handleClaudeMessages(req: Request, res: Response) {
 
   const chatBody = anthropicToChat(req.body, provider);
   const upstreamUrl = `${trimTrailingSlash(provider.base_url)}/chat/completions`;
+  const originalModel = String(req.body.model || '');
   const actualModel = String(chatBody.model || provider.model);
   const startTime = Date.now();
 
   logger.claudeProxy.request(provider.id, actualModel, JSON.stringify(req.body).length);
+  logger.info('claude-proxy', `模型映射: ${originalModel} → ${actualModel}`, { providerId: provider.id });
   logger.claudeProxy.upstreamRequest(upstreamUrl, actualModel, chatBody.stream === true);
 
   try {
@@ -91,6 +103,36 @@ async function handleClaudeMessages(req: Request, res: Response) {
   }
 }
 
+/**
+ * Claude Code 发过来的模型名 → Provider 实际模型名映射。
+ *
+ * Claude Code v2.1.x 内置模型白名单，自定义模型名会被拒绝。
+ * Profile 环境变量中用 Claude 识别的名称，Proxy 在这里映射回 Provider 配置的模型。
+ *
+ * 映射规则：
+ *   claude-haiku-4-5-20251001    → extra_config.claude.haikuModel (快速/便宜)
+ *   claude-sonnet-4-20250514     → extra_config.claude.sonnetModel (均衡)
+ *   claude-opus-4-8-20250610     → extra_config.claude.opusModel (强力)
+ *   其他                          → provider.model (fallback)
+ */
+function mapClaudeModelToProvider(claudeModel: string, provider: db.Provider): string {
+  const extra = parseProviderExtra(provider);
+  const claude = extra.claude || {};
+
+  if (claudeModel.startsWith('claude-haiku')) {
+    return claude.haikuModel || claude.smallFastModel || provider.model;
+  }
+  if (claudeModel.startsWith('claude-sonnet')) {
+    return claude.sonnetModel || claude.defaultModel || provider.model;
+  }
+  if (claudeModel.startsWith('claude-opus')) {
+    return claude.opusModel || claude.defaultModel || provider.model;
+  }
+
+  // 未知模型名，fallback 到 provider 默认模型
+  return provider.model;
+}
+
 function anthropicToChat(body: any, provider: db.Provider): Record<string, JsonValue> {
   const messages: JsonValue[] = [];
   const system = stripBillingHeader(systemToText(body.system));
@@ -101,7 +143,9 @@ function anthropicToChat(body: any, provider: db.Provider): Record<string, JsonV
     else if (converted) messages.push(converted);
   }
 
-  const model = provider.model || body.model;
+  // 根据 Claude Code 发来的模型名，映射到 Provider 实际模型
+  const incomingModel = String(body.model || '');
+  const model = mapClaudeModelToProvider(incomingModel, provider);
   const result: Record<string, JsonValue> = { model, messages, stream: Boolean(body.stream) };
   if (body.max_tokens) {
     if (supportsMaxCompletionTokens(String(model || ''))) result.max_completion_tokens = body.max_tokens;

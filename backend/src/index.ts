@@ -13,21 +13,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Middleware
 app.use(cors());
-app.use(express.json());
 
-// 全量请求日志中间件 —— 任何请求都记录
+// 全量请求日志 —— 放在 body parser 之前，确保即使 body 解析失败也能记录
 app.use((req, _res, next) => {
-  logger.info('http', `>>> ${req.method} ${req.path}`, {
-    host: req.headers.host,
-    'user-agent': (req.headers['user-agent'] || '').slice(0, 80),
-  });
-  // 记录响应完成
   const start = Date.now();
   _res.on('finish', () => {
-    logger.info('http', `<<< ${req.method} ${req.path} ${_res.statusCode} (${Date.now() - start}ms)`);
+    logger.info('http', `${req.method} ${req.path} → ${_res.statusCode} (${Date.now() - start}ms)`, {
+      host: req.headers.host,
+      ua: (req.headers['user-agent'] || '').slice(0, 60),
+    });
   });
   next();
 });
+
+// Body parser — 提高限制到 50MB，Claude Code 请求含大量 system prompt + tools
+app.use(express.json({ limit: '50mb' }));
 
 // API Routes
 app.use('/api', providerRoutes);
