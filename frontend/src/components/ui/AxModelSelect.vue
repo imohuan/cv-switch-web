@@ -165,7 +165,7 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
 </script>
 
 <template>
-  <AxDropdown v-model="open" placement="bottom-start" :offset="4" menu-max-width="320px" body-class="p-1 max-h-56 overflow-y-auto scrollbar-thin">
+  <AxDropdown v-model="open" placement="bottom-start" :offset="4" menu-width="200px" menu-max-width="320px" body-class="p-1 max-h-56 overflow-y-auto scrollbar-thin">
     <template #trigger="{ open: isOpen, toggle }">
       <div class="relative w-full">
         <div :class="[
@@ -267,7 +267,13 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
             使用自定义模型 "<span class="text-primary font-medium">{{ searchText.trim() }}</span>"
           </button>
         </div>
-        <div v-else-if="filtered.length === 0" class="py-3 text-center font-body-sm text-[11px] text-secondary">暂无可用模型</div>
+        <div v-else-if="filtered.length === 0" class="py-4 px-3 text-center font-body-sm text-[11px] text-secondary">
+          <div class="flex items-center justify-center gap-1 mb-1">
+            <span class="material-symbols-outlined text-[14px] text-secondary">inventory_2</span>
+            <span>暂无可用模型</span>
+          </div>
+          <!-- <div class="text-[10px] text-on-surface-variant opacity-70">可手动输入模型名</div> -->
+        </div>
       </div>
     </template>
   </AxDropdown>

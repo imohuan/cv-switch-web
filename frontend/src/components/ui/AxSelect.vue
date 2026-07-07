@@ -47,8 +47,8 @@ const props = withDefaults(
     placeholder: '请选择',
     searchPlaceholder: '搜索...',
     placement: 'bottom-start',
-    dropdownWidth: 'auto',
-    dropdownMaxWidth: '300px',
+    dropdownWidth: '200px',
+    dropdownMaxWidth: '320px',
     tagMaxWidth: '120px',
     triggerWidth: '',
     triggerMaxWidth: '',
@@ -432,7 +432,7 @@ watch(open, (val) => {
         </button>
         <div
           v-if="filteredOptions.length === 0"
-          class="py-3 text-center font-body-sm text-[11px] text-secondary"
+          class="py-3 px-3 text-center font-body-sm text-[11px] text-secondary"
         >
           无匹配选项
         </div>

@@ -176,7 +176,7 @@ async function loadAppConfig(appType: string) {
 const formName = ref(''); const formBaseUrl = ref(''); const formApiKey = ref(''); const formModel = ref('')
 const formApiFormat = ref<Provider['api_format']>('openai_chat'); const formProviderType = ref('custom')
 const formCapabilities = ref<Record<ApiFormat, boolean>>({ openai_chat: true, openai_responses: false, anthropic: false, gemini_native: false })
-const formClaudeDefault = ref(''); const formClaudeSmall = ref(''); const formClaudeHaiku = ref(''); const formClaudeSonnet = ref(''); const formClaudeOpus = ref('')
+const formClaudeDefault = ref(''); const formClaudeHaiku = ref(''); const formClaudeSonnet = ref(''); const formClaudeOpus = ref('')
 const formCodexDefault = ref(''); const formCodexCatalogModels = ref<string[]>([])
 
 const liveTime = ref('')
@@ -227,7 +227,6 @@ function openForm(provider: Provider | null) {
     gemini_native: extra.capabilities?.gemini_native ?? false,
   }
   formClaudeDefault.value = extra.claude?.defaultModel || provider?.model || ''
-  formClaudeSmall.value = extra.claude?.smallFastModel || ''
   formClaudeHaiku.value = extra.claude?.haikuModel || ''
   formClaudeSonnet.value = extra.claude?.sonnetModel || provider?.model || ''
   formClaudeOpus.value = extra.claude?.opusModel || provider?.model || ''
@@ -264,7 +263,7 @@ async function handleSave() {
   error.value = ''
   const extraConfig: ProviderExtraConfig = {
     provider_type: formProviderType.value, capabilities: formCapabilities.value,
-    claude: compactObject({ defaultModel: formClaudeDefault.value, smallFastModel: formClaudeSmall.value, haikuModel: formClaudeHaiku.value, sonnetModel: formClaudeSonnet.value, opusModel: formClaudeOpus.value }),
+    claude: compactObject({ defaultModel: formClaudeDefault.value, haikuModel: formClaudeHaiku.value, sonnetModel: formClaudeSonnet.value, opusModel: formClaudeOpus.value }),
     codex: compactObject({ defaultModel: formCodexDefault.value || formModel.value, models: formCodexCatalogModels.value.map(m => ({ model: m })) }),
   }
   const payload: Partial<Provider> = { name: formName.value, base_url: formBaseUrl.value, ...(formApiKey.value ? { api_key: formApiKey.value } : {}), model: formModel.value, api_format: formApiFormat.value, extra_config: JSON.stringify(extraConfig) }
@@ -821,9 +820,8 @@ function setNewApiPreset() { formProviderType.value = 'newapi'; formCapabilities
 
         <div class="col-span-2 bg-surface-container-low border border-outline-variant rounded-lg p-ax-md space-y-ax-sm">
           <h4 class="font-label-md text-label-md font-semibold text-primary">Claude 模型映射</h4>
-          <div class="grid grid-cols-5 gap-ax-sm">
+          <div class="grid grid-cols-4 gap-ax-sm">
             <AxModelSelect v-model="formClaudeDefault" :options="fetchedModels" placeholder="默认模型" size="lg" />
-            <AxModelSelect v-model="formClaudeSmall" :options="fetchedModels" placeholder="Small/Fast" size="lg" />
             <AxModelSelect v-model="formClaudeHaiku" :options="fetchedModels" placeholder="Haiku" size="lg" />
             <AxModelSelect v-model="formClaudeSonnet" :options="fetchedModels" placeholder="Sonnet" size="lg" />
             <AxModelSelect v-model="formClaudeOpus" :options="fetchedModels" placeholder="Opus" size="lg" />
