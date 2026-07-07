@@ -1,64 +1,10 @@
-import Database from 'better-sqlite3';
+import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import fs from 'fs';
 
-const DB_DIR = path.join(os.homedir(), '.cc-switch-web');
-const DB_PATH = path.join(DB_DIR, 'cc-switch-web.db');
-
-// Ensure directory exists
-if (!fs.existsSync(DB_DIR)) {
-  fs.mkdirSync(DB_DIR, { recursive: true });
-}
-
-const db = new Database(DB_PATH);
-
-// Enable WAL mode for better concurrent access
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-// Create tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS providers (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    base_url TEXT NOT NULL,
-    api_key TEXT NOT NULL DEFAULT '',
-    model TEXT NOT NULL DEFAULT '',
-    api_format TEXT NOT NULL DEFAULT 'openai_chat',
-    extra_config TEXT NOT NULL DEFAULT '{}',
-    sort_index INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS app_status (
-    app_type TEXT PRIMARY KEY,
-    current_provider_id TEXT,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (current_provider_id) REFERENCES providers(id) ON DELETE SET NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS profiles (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    app_type TEXT NOT NULL,
-    provider_id TEXT NOT NULL,
-    slug TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
-  );
-
-  -- Insert default app types
-  INSERT OR IGNORE INTO app_status (app_type) VALUES ('codex');
-  INSERT OR IGNORE INTO app_status (app_type) VALUES ('claude');
-  INSERT OR IGNORE INTO app_status (app_type) VALUES ('gemini');
-  INSERT OR IGNORE INTO app_status (app_type) VALUES ('opencode');
-`);
-
-ensureColumn('providers', 'extra_config', "TEXT NOT NULL DEFAULT '{}'");
-ensureColumn('profiles', 'extra_config', "TEXT NOT NULL DEFAULT '{}'");
+const APP_TYPES = ['codex', 'claude', 'gemini', 'opencode'];
+const DB_DIR = process.env.DATA_DIR || path.join(os.homedir(), '.cc-switch-web');
+const DB_PATH = path.join(DB_DIR, 'cc-switch-web.json');
 
 export interface Provider {
   id: string;
@@ -90,99 +36,206 @@ export interface Profile {
   updated_at: string;
 }
 
-function ensureColumn(table: string, column: string, definition: string) {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  if (!columns.some((item) => item.name === column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+interface Store {
+  providers: Provider[];
+  app_status: AppStatus[];
+  profiles: Profile[];
+}
+
+function now() {
+  return new Date().toISOString();
+}
+
+function ensureDir(dir: string) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function emptyStore(): Store {
+  const updated_at = now();
+  return {
+    providers: [],
+    app_status: APP_TYPES.map((app_type) => ({ app_type, current_provider_id: null, updated_at })),
+    profiles: [],
+  };
+}
+
+function normalizeStore(value: unknown): Store {
+  const draft = value && typeof value === 'object' ? value as Partial<Store> : {};
+  const store: Store = {
+    providers: Array.isArray(draft.providers) ? draft.providers : [],
+    app_status: Array.isArray(draft.app_status) ? draft.app_status : [],
+    profiles: Array.isArray(draft.profiles) ? draft.profiles : [],
+  };
+
+  for (const app_type of APP_TYPES) {
+    if (!store.app_status.some((item) => item.app_type === app_type)) {
+      store.app_status.push({ app_type, current_provider_id: null, updated_at: now() });
+    }
   }
+
+  store.providers = store.providers.map((provider) => ({
+    ...provider,
+    api_key: provider.api_key || '',
+    model: provider.model || '',
+    api_format: provider.api_format || 'openai_chat',
+    extra_config: provider.extra_config || '{}',
+    sort_index: Number.isInteger(provider.sort_index) ? provider.sort_index : 0,
+  }));
+  store.profiles = store.profiles.map((profile) => ({
+    ...profile,
+    extra_config: profile.extra_config || '{}',
+  }));
+
+  return store;
+}
+
+function loadStore(): Store {
+  ensureDir(DB_DIR);
+  if (!fs.existsSync(DB_PATH)) return emptyStore();
+
+  try {
+    return normalizeStore(JSON.parse(fs.readFileSync(DB_PATH, 'utf-8')));
+  } catch {
+    return emptyStore();
+  }
+}
+
+let store = loadStore();
+
+function saveStore() {
+  ensureDir(DB_DIR);
+  const tmpPath = `${DB_PATH}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, DB_PATH);
+}
+
+function byProviderOrder(a: Provider, b: Provider) {
+  return a.sort_index - b.sort_index || b.created_at.localeCompare(a.created_at);
+}
+
+function byCreatedDesc<T extends { created_at: string }>(a: T, b: T) {
+  return b.created_at.localeCompare(a.created_at);
 }
 
 // Provider CRUD
 export function getAllProviders(): Provider[] {
-  return db.prepare('SELECT * FROM providers ORDER BY sort_index ASC, created_at DESC').all() as Provider[];
+  return [...store.providers].sort(byProviderOrder);
 }
 
 export function getProviderById(id: string): Provider | undefined {
-  return db.prepare('SELECT * FROM providers WHERE id = ?').get(id) as Provider | undefined;
+  return store.providers.find((provider) => provider.id === id);
 }
 
 export function createProvider(provider: Omit<Provider, 'created_at' | 'updated_at'>): Provider {
-  const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO providers (id, name, base_url, api_key, model, api_format, extra_config, sort_index, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    provider.id, provider.name, provider.base_url, provider.api_key,
-    provider.model, provider.api_format, provider.extra_config,
-    provider.sort_index, now, now
-  );
-  return getProviderById(provider.id)!;
+  if (getProviderById(provider.id)) throw new Error(`Provider already exists: ${provider.id}`);
+
+  const timestamp = now();
+  const created: Provider = {
+    ...provider,
+    api_key: provider.api_key || '',
+    model: provider.model || '',
+    extra_config: provider.extra_config || '{}',
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+  store.providers.push(created);
+  saveStore();
+  return created;
 }
 
 export function updateProvider(id: string, updates: Partial<Omit<Provider, 'id' | 'created_at'>>): Provider | undefined {
   const existing = getProviderById(id);
   if (!existing) return undefined;
 
-  const merged = { ...existing, ...updates, id: existing.id, updated_at: new Date().toISOString() };
-  db.prepare(`
-    UPDATE providers SET name=?, base_url=?, api_key=?, model=?, api_format=?, extra_config=?, sort_index=?, updated_at=?
-    WHERE id=?
-  `).run(
-    merged.name, merged.base_url, merged.api_key, merged.model,
-    merged.api_format, merged.extra_config, merged.sort_index,
-    merged.updated_at, merged.id
-  );
-  return getProviderById(id);
+  const updated = { ...existing, ...updates, id: existing.id, created_at: existing.created_at, updated_at: now() };
+  store.providers = store.providers.map((provider) => provider.id === id ? updated : provider);
+  saveStore();
+  return updated;
 }
 
 export function deleteProvider(id: string): boolean {
-  const result = db.prepare('DELETE FROM providers WHERE id = ?').run(id);
-  // Also clear any app_status referencing this provider
-  db.prepare('UPDATE app_status SET current_provider_id = NULL WHERE current_provider_id = ?').run(id);
-  return result.changes > 0;
+  const existed = Boolean(getProviderById(id));
+  if (!existed) return false;
+
+  store.providers = store.providers.filter((provider) => provider.id !== id);
+  store.profiles = store.profiles.filter((profile) => profile.provider_id !== id);
+  store.app_status = store.app_status.map((status) => (
+    status.current_provider_id === id
+      ? { ...status, current_provider_id: null, updated_at: now() }
+      : status
+  ));
+  saveStore();
+  return true;
 }
 
 // App Status
 export function getAppStatus(appType: string): AppStatus | undefined {
-  return db.prepare('SELECT * FROM app_status WHERE app_type = ?').get(appType) as AppStatus | undefined;
+  return store.app_status.find((status) => status.app_type === appType);
 }
 
 export function getAllAppStatus(): AppStatus[] {
-  return db.prepare('SELECT * FROM app_status').all() as AppStatus[];
+  return [...store.app_status];
 }
 
 export function setCurrentProvider(appType: string, providerId: string | null): void {
-  db.prepare(`
-    UPDATE app_status SET current_provider_id = ?, updated_at = ?
-    WHERE app_type = ?
-  `).run(providerId, new Date().toISOString(), appType);
+  const status = getAppStatus(appType);
+  const updated: AppStatus = { app_type: appType, current_provider_id: providerId, updated_at: now() };
+  store.app_status = status
+    ? store.app_status.map((item) => item.app_type === appType ? updated : item)
+    : [...store.app_status, updated];
+  saveStore();
 }
 
 // Profile CRUD
 export function getAllProfiles(): Profile[] {
-  return db.prepare('SELECT * FROM profiles ORDER BY created_at DESC').all() as Profile[];
+  return [...store.profiles].sort(byCreatedDesc);
 }
 
 export function getProfileById(id: string): Profile | undefined {
-  return db.prepare('SELECT * FROM profiles WHERE id = ?').get(id) as Profile | undefined;
+  return store.profiles.find((profile) => profile.id === id);
 }
 
 export function getProfilesByProviderId(providerId: string): Profile[] {
-  return db.prepare('SELECT * FROM profiles WHERE provider_id = ?').all(providerId) as Profile[];
+  return store.profiles.filter((profile) => profile.provider_id === providerId);
 }
 
 export function createProfile(profile: Omit<Profile, 'created_at' | 'updated_at'>): Profile {
-  const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO profiles (id, name, app_type, provider_id, slug, extra_config, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(profile.id, profile.name, profile.app_type, profile.provider_id, profile.slug, profile.extra_config || '{}', now, now);
-  return getProfileById(profile.id)!;
+  if (getProfileById(profile.id)) throw new Error(`Profile already exists: ${profile.id}`);
+  if (store.profiles.some((item) => item.slug === profile.slug)) throw new Error(`Profile slug already exists: ${profile.slug}`);
+
+  const timestamp = now();
+  const created: Profile = {
+    ...profile,
+    extra_config: profile.extra_config || '{}',
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+  store.profiles.push(created);
+  saveStore();
+  return created;
 }
 
 export function deleteProfile(id: string): boolean {
-  const result = db.prepare('DELETE FROM profiles WHERE id = ?').run(id);
-  return result.changes > 0;
+  const existed = Boolean(getProfileById(id));
+  if (!existed) return false;
+
+  store.profiles = store.profiles.filter((profile) => profile.id !== id);
+  saveStore();
+  return true;
 }
 
-export default db;
+export default {
+  getAllProviders,
+  getProviderById,
+  createProvider,
+  updateProvider,
+  deleteProvider,
+  getAppStatus,
+  getAllAppStatus,
+  setCurrentProvider,
+  getAllProfiles,
+  getProfileById,
+  getProfilesByProviderId,
+  createProfile,
+  deleteProfile,
+};
