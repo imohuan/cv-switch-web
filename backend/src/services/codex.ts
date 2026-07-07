@@ -1,12 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import type { Provider } from '../db.js';
+import { GLOBAL_HOME_DIR } from '../config.js';
 import { bestFormatForApp, codexModels, publicBaseUrl } from './providerConfig.js';
 import { generateCodexModelCatalog } from './codexCatalog.js';
 
-const CODEX_DIR = path.join(os.homedir(), '.codex');
+const CODEX_DIR = path.join(GLOBAL_HOME_DIR, '.codex');
 const CODEX_AUTH_PATH = path.join(CODEX_DIR, 'auth.json');
 const CODEX_CONFIG_PATH = path.join(CODEX_DIR, 'config.toml');
 const CODEX_MODEL_CATALOG_PATH = path.join(CODEX_DIR, 'cc-switch-web-model-catalog.json');

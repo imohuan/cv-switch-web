@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import type { Provider } from '../db.js';
+import { GLOBAL_HOME_DIR } from '../config.js';
 import { bestFormatForApp, claudeModels, publicBaseUrl } from './providerConfig.js';
 
-const CLAUDE_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
+const CLAUDE_SETTINGS_PATH = path.join(GLOBAL_HOME_DIR, '.claude', 'settings.json');
 
 /**
  * Write Claude Code configuration from a Provider.
@@ -17,7 +17,7 @@ const CLAUDE_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json')
  */
 export function writeClaudeConfig(provider: Provider): { success: boolean; message: string } {
   try {
-    const claudeDir = path.join(os.homedir(), '.claude');
+    const claudeDir = path.join(GLOBAL_HOME_DIR, '.claude');
     if (!fs.existsSync(claudeDir)) {
       fs.mkdirSync(claudeDir, { recursive: true });
     }

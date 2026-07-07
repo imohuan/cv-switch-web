@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import type { Provider } from '../db.js';
+import { GLOBAL_HOME_DIR } from '../config.js';
 
-const OPENCODE_CONFIG_PATH = path.join(os.homedir(), '.config', 'opencode', 'opencode.json');
+const OPENCODE_CONFIG_PATH = path.join(GLOBAL_HOME_DIR, '.config', 'opencode', 'opencode.json');
 
 /**
  * Write OpenCode configuration from a Provider.
@@ -16,7 +16,7 @@ const OPENCODE_CONFIG_PATH = path.join(os.homedir(), '.config', 'opencode', 'ope
  */
 export function writeOpenCodeConfig(provider: Provider): { success: boolean; message: string } {
   try {
-    const opencodeDir = path.join(os.homedir(), '.config', 'opencode');
+    const opencodeDir = path.join(GLOBAL_HOME_DIR, '.config', 'opencode');
     if (!fs.existsSync(opencodeDir)) {
       fs.mkdirSync(opencodeDir, { recursive: true });
     }

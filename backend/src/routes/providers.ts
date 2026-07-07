@@ -2,12 +2,12 @@ import { Router, Request, Response } from 'express';
 import * as db from '../db.js';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { writeCodexConfig, getCodexConfigStatus } from '../services/codex.js';
 import { writeClaudeConfig, getClaudeConfigStatus } from '../services/claude.js';
 import { writeGeminiConfig, getGeminiConfigStatus } from '../services/gemini.js';
 import { writeOpenCodeConfig, getOpenCodeConfigStatus } from '../services/opencode.js';
 import { launchCommand, launchCommands, profileHomeDir, writeProfileConfig } from '../services/profiles.js';
+import { GLOBAL_HOME_DIR } from '../config.js';
 import { logger } from '../services/logger.js';
 
 const router = Router();
@@ -367,7 +367,7 @@ router.get('/profiles/:id/config', (req: Request, res: Response) => {
 
 /** 根据应用类型返回全局配置文件路径列表 */
 function globalConfigFiles(appType: string): Array<{ label: string; path: string }> {
-  const home = os.homedir();
+  const home = GLOBAL_HOME_DIR;
   switch (appType) {
     case 'claude':
       return [
@@ -401,7 +401,7 @@ router.get('/app/:appType/config', (req: Request, res: Response) => {
       return;
     }
 
-    const homeDir = os.homedir();
+    const homeDir = GLOBAL_HOME_DIR;
     const configFiles = globalConfigFiles(appType);
 
     const files: Array<{ label: string; content: string; exists: boolean }> = configFiles.map(f => {

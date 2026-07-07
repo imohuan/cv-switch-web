@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import type { Provider } from '../db.js';
+import { GLOBAL_HOME_DIR } from '../config.js';
 
-const GEMINI_DIR = path.join(os.homedir(), '.gemini');
+const GEMINI_DIR = path.join(GLOBAL_HOME_DIR, '.gemini');
 const GEMINI_ENV_PATH = path.join(GEMINI_DIR, '.env');
 const GEMINI_SETTINGS_PATH = path.join(GEMINI_DIR, 'settings.json');
 

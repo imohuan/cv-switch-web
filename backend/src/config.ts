@@ -1,12 +1,28 @@
 import os from 'os';
 import path from 'path';
 
-function expandHomeDir(value: string) {
-  if (value === '~') return os.homedir();
-  if (value.startsWith('~/') || value.startsWith('~\\')) return path.join(os.homedir(), value.slice(2));
+function userAccountHomeDir() {
+  try {
+    return os.userInfo().homedir;
+  } catch {
+    return os.homedir();
+  }
+}
+
+function expandHomeDir(value: string, homeDir = os.homedir()) {
+  if (value === '~') return homeDir;
+  if (value.startsWith('~/') || value.startsWith('~\\')) return path.join(homeDir, value.slice(2));
   return value;
 }
 
+export function resolveGlobalHomeDir(env: NodeJS.ProcessEnv = process.env, accountHomeDir = userAccountHomeDir()) {
+  const override = env.CV_SWITCH_GLOBAL_HOME_DIR;
+  if (override) return path.resolve(expandHomeDir(override, accountHomeDir));
+
+  return path.resolve(accountHomeDir);
+}
+
+export const GLOBAL_HOME_DIR = resolveGlobalHomeDir();
 export const ROOT_DIR = path.resolve(expandHomeDir(process.env.CV_SWITCH_ROOT_DIR || path.join(os.homedir(), '.cv-switch-web')));
 export const DATA_DIR = path.join(ROOT_DIR, 'data');
 export const LOG_DIR = path.join(ROOT_DIR, 'logs');

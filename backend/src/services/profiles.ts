@@ -1,11 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { stringify as stringifyToml } from 'smol-toml';
 import type { Provider, Profile } from '../db.js';
 import { bestFormatForApp, claudeModels, codexModels, publicBaseUrl } from './providerConfig.js';
 import { generateCodexModelCatalog } from './codexCatalog.js';
-import { PROFILES_DIR } from '../config.js';
+import { GLOBAL_HOME_DIR, PROFILES_DIR } from '../config.js';
 
 export interface ProfileResult {
   success: boolean;
@@ -33,7 +32,7 @@ function ensureDir(dir: string) {
 
 /** 将全局 Claude 二进制复制到 Profile HOME，避免每个 Profile 都需要 claude install */
 function copyClaudeBinary(homeDir: string) {
-  const globalBin = path.join(os.homedir(), '.local', 'bin', 'claude.exe');
+  const globalBin = path.join(GLOBAL_HOME_DIR, '.local', 'bin', 'claude.exe');
   const profileBinDir = path.join(homeDir, '.local', 'bin');
   const profileBin = path.join(profileBinDir, 'claude.exe');
   if (fs.existsSync(globalBin) && !fs.existsSync(profileBin)) {
@@ -44,7 +43,7 @@ function copyClaudeBinary(homeDir: string) {
 
 /** 将全局 .claude.json（认证状态）复制到 Profile HOME，避免 "Not logged in" */
 function copyClaudeAuthState(homeDir: string) {
-  const globalAuth = path.join(os.homedir(), '.claude.json');
+  const globalAuth = path.join(GLOBAL_HOME_DIR, '.claude.json');
   const profileAuth = path.join(homeDir, '.claude.json');
   if (fs.existsSync(globalAuth)) {
     fs.copyFileSync(globalAuth, profileAuth);
