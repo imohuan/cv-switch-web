@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import providerRoutes from './routes/providers.js';
@@ -10,6 +11,10 @@ import { logger } from './services/logger.js';
 const app = express();
 const PORT = parseInt(process.env.PORT || '3120', 10);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const frontendDist = [
+  path.resolve(__dirname, '../../frontend/dist'),
+  path.resolve(process.cwd(), 'frontend/dist'),
+].find((dir) => fs.existsSync(path.join(dir, 'index.html')));
 
 // Middleware
 app.use(cors());
@@ -45,18 +50,13 @@ app.get('/info', (_req, res) => {
 });
 
 // Production: serve built frontend + SPA fallback
-const frontendDist = path.resolve(__dirname, '../../frontend/dist');
-app.use(express.static(frontendDist));
-app.get('*', (req, res, next) => {
-  // Don't intercept API/proxy routes
-  if (req.path.startsWith('/api') || req.path.startsWith('/proxy')) return next();
-  const indexPath = path.join(frontendDist, 'index.html');
-  res.sendFile(indexPath, (err) => {
-    if (err) {
-      res.status(404).json({ error: 'Not found (frontend may not be built yet)' });
-    }
+if (frontendDist) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/proxy')) return next();
+    res.sendFile(path.join(frontendDist, 'index.html'));
   });
-});
+}
 
 app.listen(PORT, () => {
   const env = process.env.NODE_ENV || 'development';
