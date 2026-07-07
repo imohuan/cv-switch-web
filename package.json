@@ -1,6 +1,6 @@
 {
   "name": "@axtools/cv-switch-web",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Web-based AI tool config manager - like CC Switch for cloud servers",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
