@@ -39,6 +39,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// CLI process identity check: used before killing a port to avoid stopping unrelated services.
+app.get('/info', (_req, res) => {
+  res.type('text/plain').send('cv-switch-web');
+});
+
 // Production: serve built frontend + SPA fallback
 const frontendDist = path.resolve(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDist));

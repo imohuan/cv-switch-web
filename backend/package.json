@@ -1,6 +1,7 @@
 {
   "name": "cc-switch-web-backend",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -12,9 +13,6 @@
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "smol-toml": "^1.4.2"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3"]
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",

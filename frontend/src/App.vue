@@ -54,12 +54,12 @@ function getCommandForProfile(p: Profile): string {
 }
 
 /** 配置文件类型（含预解析的 JSON 数据） */
-type ConfigFile = { label: string; content: string; exists: boolean; parsed?: unknown }
+type RawConfigFile = { label: string; content: string; exists: boolean }
+type ConfigFile = RawConfigFile & ({ isJson: true; parsed: unknown } | { isJson?: false; parsed?: undefined })
 
-/** 尝试解析 JSON 文件内容，失败返回 null */
-function tryParseJson(file: { label: string; content: string }): unknown | null {
-  if (!file.label.endsWith('.json')) return null
-  try { return JSON.parse(file.content) } catch { return null }
+function toConfigFile(file: RawConfigFile): ConfigFile {
+  if (!file.label.toLowerCase().endsWith('.json')) return { ...file, isJson: false }
+  try { return { ...file, isJson: true, parsed: JSON.parse(file.content) } } catch { return { ...file, isJson: false } }
 }
 
 /** Profile 本地配置查看 */
@@ -81,6 +81,20 @@ const expandedAppConfig = ref<string | null>(null)
 const appConfigs = ref<Record<string, { home_dir: string; app_type: string; files: ConfigFile[] } | null>>({})
 const loadingAppConfig = ref<string | null>(null)
 const expandedAppFiles = ref<Set<string>>(new Set())
+const fullscreenJsonFile = ref<ConfigFile | null>(null)
+const showFullscreenJson = computed({
+  get: () => fullscreenJsonFile.value !== null,
+  set: (show) => { if (!show) fullscreenJsonFile.value = null },
+})
+
+function openFullscreenJson(file: ConfigFile) {
+  if (!file.isJson) return
+  fullscreenJsonFile.value = file
+}
+
+function isJsonFile(file: ConfigFile): file is ConfigFile & { isJson: true; parsed: unknown } {
+  return file.isJson === true
+}
 
 function toggleProfileConfig(profile: Profile) {
   if (expandedConfigId.value === profile.id) {
@@ -111,7 +125,7 @@ async function loadProfileConfig(id: string) {
   try {
     const res = await api.getProfileConfig(id)
     if (res.success && res.data) {
-      profileConfigs.value[id] = { ...res.data, files: res.data.files.map(f => ({ ...f, parsed: tryParseJson(f) })) }
+      profileConfigs.value[id] = { ...res.data, files: res.data.files.map(toConfigFile) }
     } else {
       profileConfigs.value[id] = { home_dir: '', app_type: '', files: [{ label: '错误', content: res.error || '读取失败', exists: false }] }
     }
@@ -149,7 +163,7 @@ async function loadAppConfig(appType: string) {
   try {
     const res = await api.getAppConfig(appType)
     if (res.success && res.data) {
-      appConfigs.value[appType] = { ...res.data, files: res.data.files.map(f => ({ ...f, parsed: tryParseJson(f) })) }
+      appConfigs.value[appType] = { ...res.data, files: res.data.files.map(toConfigFile) }
     } else {
       appConfigs.value[appType] = { home_dir: '', app_type: appType, files: [{ label: '错误', content: res.error || '读取失败', exists: false }] }
     }
@@ -489,19 +503,37 @@ function setNewApiPreset() { formProviderType.value = 'newapi'; formCapabilities
                     :key="fi"
                     class="border-t border-outline-variant/50 last:border-b-0"
                   >
-                    <button
+                    <div
                       class="w-full px-3 py-2 flex items-center gap-2 hover:bg-surface-container-low transition-colors cursor-pointer text-left"
                       :class="{ 'opacity-50': !file.exists }"
+                      role="button"
+                      tabindex="0"
                       @click="toggleAppFileExpand(statusAppTab, fi)"
+                      @keydown.enter.prevent="toggleAppFileExpand(statusAppTab, fi)"
+                      @keydown.space.prevent="toggleAppFileExpand(statusAppTab, fi)"
                     >
                       <span class="material-symbols-outlined text-[14px]" :class="file.exists ? 'text-success' : 'text-error'">
                         {{ file.exists ? 'description' : 'error' }}
                       </span>
-                      <span class="font-label-md text-[12px] font-medium text-primary truncate">{{ file.label }}</span>
-                      <span class="material-symbols-outlined text-[14px] text-secondary ml-auto transition-transform" :class="expandedAppFileKey(`${statusAppTab}-${fi}`) ? 'rotate-180' : ''">expand_more</span>
-                    </button>
+                      <span class="font-label-md text-[12px] font-medium text-primary truncate min-w-0">{{ file.label }}</span>
+                      <div class="ml-auto flex items-center gap-1 shrink-0">
+                        <AxButton
+                          v-if="isJsonFile(file)"
+                          size="icon"
+                          variant="ghost"
+                          icon="open_in_full"
+                          icon-size="12px"
+                          title="全屏查看 JSON"
+                          aria-label="全屏查看 JSON"
+                          @click.stop="openFullscreenJson(file)"
+                          @keydown.enter.stop
+                          @keydown.space.stop
+                        />
+                        <span class="material-symbols-outlined text-[14px] text-secondary transition-transform" :class="expandedAppFileKey(`${statusAppTab}-${fi}`) ? 'rotate-180' : ''">expand_more</span>
+                      </div>
+                    </div>
                     <div v-if="expandedAppFileKey(`${statusAppTab}-${fi}`)" class="px-4 py-3 bg-surface-container-lowest border-t border-outline-variant/30">
-                      <AxJsonViewer v-if="file.parsed" :data="file.parsed" :expand-level="2" class="max-h-80 overflow-y-auto" />
+                      <AxJsonViewer v-if="isJsonFile(file)" :data="file.parsed" :expand-level="2" class="max-h-80 overflow-y-auto" />
                       <pre v-else class="font-mono text-[11px] text-on-surface whitespace-pre-wrap break-all leading-relaxed max-h-80 overflow-y-auto">{{ file.content }}</pre>
                     </div>
                   </div>
@@ -611,19 +643,35 @@ function setNewApiPreset() { formProviderType.value = 'newapi'; formCapabilities
                       :key="fi"
                       class="border-t border-outline-variant/50 last:border-b-0"
                     >
-                      <button
+                      <div
                         class="w-full px-3 py-2 flex items-center gap-2 hover:bg-surface-container-low transition-colors cursor-pointer text-left"
                         :class="{ 'opacity-50': !file.exists }"
+                        role="button"
+                        tabindex="0"
                         @click="toggleFileExpand(p.id, fi)"
+                        @keydown.enter.prevent="toggleFileExpand(p.id, fi)"
+                        @keydown.space.prevent="toggleFileExpand(p.id, fi)"
                       >
                         <span class="material-symbols-outlined text-[14px]" :class="file.exists ? 'text-success' : 'text-error'">
                           {{ file.exists ? 'description' : 'error' }}
                         </span>
-                        <span class="font-label-md text-[12px] font-medium text-primary truncate">{{ file.label }}</span>
-                        <span class="material-symbols-outlined text-[14px] text-secondary ml-auto transition-transform" :class="expandedFileKey(`${p.id}-${fi}`) ? 'rotate-180' : ''">expand_more</span>
-                      </button>
+                        <span class="font-label-md text-[12px] font-medium text-primary truncate min-w-0">{{ file.label }}</span>
+                        <div class="ml-auto flex items-center gap-1 shrink-0">
+                          <AxButton
+                            v-if="isJsonFile(file)"
+                            size="icon"
+                            variant="ghost"
+                            icon="open_in_full"
+                            icon-size="12px"
+                            title="全屏查看 JSON"
+                            aria-label="全屏查看 JSON"
+                            @click.stop="openFullscreenJson(file)"
+                          />
+                          <span class="material-symbols-outlined text-[14px] text-secondary transition-transform" :class="expandedFileKey(`${p.id}-${fi}`) ? 'rotate-180' : ''">expand_more</span>
+                        </div>
+                      </div>
                       <div v-if="expandedFileKey(`${p.id}-${fi}`)" class="px-4 py-3 bg-surface-container-lowest border-t border-outline-variant/30">
-                        <AxJsonViewer v-if="file.parsed" :data="file.parsed" :expand-level="2" class="max-h-80 overflow-y-auto" />
+                        <AxJsonViewer v-if="isJsonFile(file)" :data="file.parsed" :expand-level="2" class="max-h-80 overflow-y-auto" />
                         <pre v-else class="font-mono text-[11px] text-on-surface whitespace-pre-wrap break-all leading-relaxed max-h-80 overflow-y-auto">{{ file.content }}</pre>
                       </div>
                     </div>
@@ -708,6 +756,21 @@ function setNewApiPreset() { formProviderType.value = 'newapi'; formCapabilities
       </div>
     </div>
   </div>
+
+  <!-- JSON Fullscreen Dialog -->
+  <AxDialog
+    v-model="showFullscreenJson"
+    :title="fullscreenJsonFile?.label || 'JSON View'"
+    icon="data_object"
+    max-width="max-w-[96vw]"
+    body-class="!p-0 !space-y-0"
+  >
+    <template #default>
+      <div v-if="fullscreenJsonFile?.isJson" class="h-[calc(100vh-8rem)] overflow-auto bg-surface-container-lowest p-ax-lg">
+        <AxJsonViewer :data="fullscreenJsonFile.parsed" :expand-level="0" :wrap-enabled="false" class="min-w-max pb-ax-lg" />
+      </div>
+    </template>
+  </AxDialog>
 
   <!-- Provider Form Dialog -->
   <AxDialog v-model="showForm" :title="editingProvider ? '编辑 Provider' : '添加 Provider'" icon="dns" max-width="max-w-3xl">
