@@ -143,6 +143,8 @@ interface ModelInfo {
   slug: string;
   display_name: string;
   description: string | null;
+  // 指定该模型使用的 provider ID，不设置则用顶层 model_provider
+  model_provider_ref: string;
 
   // ── 推理 ──
   default_reasoning_level?: ReasoningEffort;
@@ -228,6 +230,8 @@ export function generateCodexModelCatalog(provider: Provider): ModelsResponse {
         slug: modelSlug,
         display_name: displayName,
         description: `Custom model ${modelSlug} configured via cc-switch-web`,
+        // 强制该模型走 custom provider，否则 Codex 会默认走 OpenAI 内置 provider
+        model_provider_ref: 'custom',
 
         // ── 推理 ──
         // 默认推理强度。Option 有 default，不写也不报错，但写了更明确。
