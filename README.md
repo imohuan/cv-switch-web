@@ -150,10 +150,16 @@ npx -y @axtools/cv-switch-web start
 CLI 会把运行状态、PID、端口记录和服务数据放到用户目录下：
 
 ```text
-~/.axtools/cv-switch-web
+~/.cv-switch-web
 ```
 
-这样做是为了兼容 `npx`：`npx` 可能使用临时包目录，如果把数据写在包目录里，后续运行时容易丢失。
+可通过启动参数覆盖：
+
+```bash
+cv-switch-web start --root-dir /path/to/cv-switch-web-data
+```
+
+该根目录下会派生服务自身数据：`data/`、`logs/`、`profiles/`，以及 CLI 管理用的 `.pid`、`.ports`。如果启动时使用了自定义根目录，`stop` / `kill` 也需要传同一个 `--root-dir`。
 
 ## 常见问题
 

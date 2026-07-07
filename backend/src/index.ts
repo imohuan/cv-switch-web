@@ -7,9 +7,9 @@ import providerRoutes from './routes/providers.js';
 import codexProxyRoutes from './routes/codexProxy.js';
 import claudeProxyRoutes from './routes/claudeProxy.js';
 import { logger } from './services/logger.js';
+import { PORT, ROOT_DIR } from './config.js';
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3120', 10);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendDist = [
   path.resolve(__dirname, '../../frontend/dist'),
@@ -64,6 +64,7 @@ app.listen(PORT, () => {
     port: PORT,
     env,
     node: process.version,
+    rootDir: ROOT_DIR,
     logDir: logger.logDir,
   });
 });

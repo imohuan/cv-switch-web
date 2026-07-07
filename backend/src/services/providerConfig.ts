@@ -1,4 +1,5 @@
 import type { Provider } from '../db.js';
+import { PUBLIC_BASE_URL } from '../config.js';
 
 export type ApiFormat = 'openai_chat' | 'openai_responses' | 'anthropic' | 'gemini_native';
 
@@ -76,5 +77,5 @@ export function codexModels(provider: Provider) {
 }
 
 export function publicBaseUrl() {
-  return (process.env.CC_SWITCH_PUBLIC_BASE_URL || `http://127.0.0.1:${process.env.PORT || '3120'}`).replace(/\/+$/, '');
+  return PUBLIC_BASE_URL;
 }

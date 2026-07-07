@@ -5,6 +5,7 @@ dist/
 *.log
 .DS_Store
 .cc-switch-web/
+.cv-switch-web/
 *.db
 *.db-*
 coverage/

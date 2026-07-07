@@ -1,8 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
-
-const LOG_DIR = path.join(os.homedir(), '.cc-switch-web', 'logs');
+import { LOG_DIR } from '../config.js';
 
 function ensureLogDir() {
   if (!fs.existsSync(LOG_DIR)) {

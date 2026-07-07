@@ -29,11 +29,27 @@ const PKG_JSON = join(ROOT, 'package.json')
 const pkg = JSON.parse(await readFile(PKG_JSON, 'utf-8'))
 const SERVER_SCRIPT = join(ROOT, 'backend', 'dist', 'index.js')
 
-// ---- 持久化目录（放用户目录，避免 npx 临时路径问题）----
-const DATA_HOME = join(homedir(), '.axtools', 'cv-switch-web')
-const PID_DIR = DATA_HOME
-const PID_FILE = join(PID_DIR, '.pid')
-const PORTS_FILE = join(PID_DIR, '.ports')
+// ---- 持久化根目录（放用户目录，避免 npx 临时路径问题）----
+const DEFAULT_RUNTIME_ROOT = join(homedir(), '.cv-switch-web')
+let RUNTIME_ROOT = resolve(process.env.CV_SWITCH_ROOT_DIR || DEFAULT_RUNTIME_ROOT)
+
+function expandHomeDir(value) {
+  if (!value || value === '~') return value ? homedir() : value
+  if (value.startsWith('~/') || value.startsWith('~\\')) return join(homedir(), value.slice(2))
+  return value
+}
+
+function configureRuntimeRoot(rootDir) {
+  RUNTIME_ROOT = resolve(expandHomeDir(rootDir || process.env.CV_SWITCH_ROOT_DIR || DEFAULT_RUNTIME_ROOT))
+}
+
+function pidFile() {
+  return join(RUNTIME_ROOT, '.pid')
+}
+
+function portsFile() {
+  return join(RUNTIME_ROOT, '.ports')
+}
 
 function parsePort(value) {
   const port = parseInt(value, 10)
@@ -49,13 +65,7 @@ function getServerEnv(port) {
     ...process.env,
     PORT: String(port),
     NODE_PATH: join(ROOT, 'node_modules'),
-    DATA_DIR: join(DATA_HOME, 'data'),
-    COOKIES_DIR: join(DATA_HOME, 'cookies'),
-    OUTPUT_DIR: join(DATA_HOME, 'downloads'),
-    UPLOADS_DIR: join(DATA_HOME, 'uploads'),
-    REQUEST_LOG_DIR: join(DATA_HOME, 'requests'),
-    LOG_DIR: join(DATA_HOME, 'logs'),
-    VIDEOS_DIR: join(DATA_HOME, 'output', 'videos'),
+    CV_SWITCH_ROOT_DIR: RUNTIME_ROOT,
   }
 }
 
@@ -71,7 +81,7 @@ async function ensureServerScript() {
 
 async function ensurePidDir() {
   try {
-    await mkdir(PID_DIR, { recursive: true })
+    await mkdir(RUNTIME_ROOT, { recursive: true })
   } catch { /* ignore */ }
 }
 
@@ -87,23 +97,23 @@ function isProcessRunning(pid) {
 
 // ---- PID 文件操作 ----
 async function readPidFile() {
-  const raw = await readFile(PID_FILE, 'utf-8')
+  const raw = await readFile(pidFile(), 'utf-8')
   return parseInt(raw.trim(), 10)
 }
 
 async function removePidFile() {
-  try { await unlink(PID_FILE) } catch { /* 不存在忽略 */ }
+  try { await unlink(pidFile()) } catch { /* 不存在忽略 */ }
 }
 
 async function writePid(pid) {
   await ensurePidDir()
-  await writeFile(PID_FILE, String(pid))
+  await writeFile(pidFile(), String(pid))
 }
 
 // ---- 端口记录操作 ----
 async function readPorts() {
   try {
-    const raw = await readFile(PORTS_FILE, 'utf-8')
+    const raw = await readFile(portsFile(), 'utf-8')
     return raw.split('\n').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0)
   } catch {
     return []
@@ -113,7 +123,7 @@ async function readPorts() {
 async function writePorts(ports) {
   await ensurePidDir()
   const unique = [...new Set(ports)].sort((a, b) => a - b)
-  await writeFile(PORTS_FILE, unique.join('\n'))
+  await writeFile(portsFile(), unique.join('\n'))
 }
 
 async function addPort(port) {
@@ -265,7 +275,7 @@ async function cmdStart(port) {
 
   // 后台 spawn 服务进程
   // PORT 环境变量控制监听端口；NODE_PATH 让运行时优先从根依赖解析
-  // 所有持久化路径指向 ~/.axtools/cv-switch-web/，避免 npx 临时路径数据丢失
+  // 所有服务自身数据都挂在运行时根目录下，避免 npx 临时路径数据丢失
   const child = spawn('node', [SERVER_SCRIPT], {
     detached: true,
     stdio: 'ignore',
@@ -292,7 +302,7 @@ async function cmdStart(port) {
   本地地址  http://localhost:${text}
   网络地址  http://0.0.0.0:${text}
   PID        ${child.pid}
-  数据目录  ${DATA_HOME}
+  数据目录  ${RUNTIME_ROOT}
   停止服务   npx ${pkg.name} stop
   ${'\u2500'.repeat(54)}
 `)
@@ -390,36 +400,46 @@ program
   .name('cv-switch-web')
   .description('CV Switch Web — AI tool config manager web panel')
   .version(pkg.version)
+  .option('--root-dir <dir>', '运行时根目录（默认: ~/.cv-switch-web）')
   .addHelpText('after', `
 示例:
-  cv-switch-web start              默认端口 8033 启动
-  cv-switch-web start --port 3000   指定端口启动
-  cv-switch-web stop                停止服务
-  cv-switch-web restart             重启服务
-  cv-switch-web restart --port 3000 指定端口重启
-  cv-switch-web serve               前台运行，适合 systemd
-  cv-switch-web serve --port 3000   指定端口前台运行
-  cv-switch-web kill                杀死所有 cv-switch-web 端口进程
+  cv-switch-web start                         默认端口 8033 启动
+  cv-switch-web start --port 3000              指定端口启动
+  cv-switch-web start --root-dir ~/.cv-switch-web 指定运行时根目录
+  cv-switch-web stop                          停止服务
+  cv-switch-web restart                       重启服务
+  cv-switch-web restart --port 3000            指定端口重启
+  cv-switch-web serve                         前台运行，适合 systemd
+  cv-switch-web serve --port 3000              指定端口前台运行
+  cv-switch-web kill                          杀死所有 cv-switch-web 端口进程
 `)
 
 program
   .command('start')
   .description('后台启动服务（自动关闭旧服务）')
   .option('-p, --port <port>', '监听端口', '8033')
+  .option('--root-dir <dir>', '运行时根目录')
   .action(async (opts) => {
+    configureRuntimeRoot(opts.rootDir || program.opts().rootDir)
     await cmdStart(parsePort(opts.port))
   })
 
 program
   .command('stop')
   .description('停止服务')
-  .action(() => cmdStop())
+  .option('--root-dir <dir>', '运行时根目录')
+  .action((opts) => {
+    configureRuntimeRoot(opts.rootDir || program.opts().rootDir)
+    return cmdStop()
+  })
 
 program
   .command('restart')
   .description('重启服务（先停后启）')
   .option('-p, --port <port>', '监听端口', '8033')
+  .option('--root-dir <dir>', '运行时根目录')
   .action(async (opts) => {
+    configureRuntimeRoot(opts.rootDir || program.opts().rootDir)
     await cmdRestart(parsePort(opts.port))
   })
 
@@ -427,14 +447,20 @@ program
   .command('serve')
   .description('前台运行服务（适合 systemd 托管）')
   .option('-p, --port <port>', '监听端口', '8033')
+  .option('--root-dir <dir>', '运行时根目录')
   .action(async (opts) => {
+    configureRuntimeRoot(opts.rootDir || program.opts().rootDir)
     await cmdServe(parsePort(opts.port))
   })
 
 program
   .command('kill')
   .description('杀死所有 cv-switch-web 端口进程')
-  .action(() => cmdKill())
+  .option('--root-dir <dir>', '运行时根目录')
+  .action((opts) => {
+    configureRuntimeRoot(opts.rootDir || program.opts().rootDir)
+    return cmdKill()
+  })
 
 program
   .command('help')

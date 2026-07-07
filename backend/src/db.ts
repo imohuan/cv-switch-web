@@ -1,10 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
+import { DATA_DIR } from './config.js';
 
 const APP_TYPES = ['codex', 'claude', 'gemini', 'opencode'];
-const DB_DIR = process.env.DATA_DIR || path.join(os.homedir(), '.cc-switch-web');
-const DB_PATH = path.join(DB_DIR, 'cc-switch-web.json');
+const DB_PATH = path.join(DATA_DIR, 'cc-switch-web.json');
 
 export interface Provider {
   id: string;
@@ -90,7 +89,7 @@ function normalizeStore(value: unknown): Store {
 }
 
 function loadStore(): Store {
-  ensureDir(DB_DIR);
+  ensureDir(DATA_DIR);
   if (!fs.existsSync(DB_PATH)) return emptyStore();
 
   try {
@@ -103,7 +102,7 @@ function loadStore(): Store {
 let store = loadStore();
 
 function saveStore() {
-  ensureDir(DB_DIR);
+  ensureDir(DATA_DIR);
   const tmpPath = `${DB_PATH}.tmp`;
   fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2), 'utf-8');
   fs.renameSync(tmpPath, DB_PATH);

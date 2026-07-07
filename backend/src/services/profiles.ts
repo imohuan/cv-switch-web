@@ -5,8 +5,7 @@ import { stringify as stringifyToml } from 'smol-toml';
 import type { Provider, Profile } from '../db.js';
 import { bestFormatForApp, claudeModels, codexModels, publicBaseUrl } from './providerConfig.js';
 import { generateCodexModelCatalog } from './codexCatalog.js';
-
-const PROFILES_DIR = path.join(os.homedir(), '.cc-switch-web', 'profiles');
+import { PROFILES_DIR } from '../config.js';
 
 export interface ProfileResult {
   success: boolean;
