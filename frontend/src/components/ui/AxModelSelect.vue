@@ -28,11 +28,16 @@ const fetchLoading = ref(false)
 const open = ref(false)
 const searchText = ref('')
 const highlightIndex = ref(-1)
-const searchInputRef = ref<HTMLInputElement | null>(null)
+const searchInputRef = ref<HTMLInputElement | HTMLTextAreaElement | null>(null)
 
 const SIZE_CLASSES: Record<string, string> = {
   xs: 'h-[18px] px-1.5 py-px text-body-sm', sm: 'h-5 px-2 py-0.5 text-body-sm',
   md: 'h-6 px-2.5 py-1 text-label-md', lg: 'h-7 px-3 py-1.5 text-label-md',
+}
+
+const MULTI_SIZE_CLASSES: Record<string, string> = {
+  xs: 'px-1.5 py-px text-body-sm', sm: 'px-2 py-0.5 text-body-sm',
+  md: 'px-2.5 py-1 text-label-md', lg: 'px-3 py-1.5 text-label-md',
 }
 
 const currentValues = computed<(string | number)[]>(() => {
@@ -164,55 +169,81 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
     <template #trigger="{ open: isOpen, toggle }">
       <div class="relative w-full">
         <div :class="[
-          'w-full bg-surface-container-low transition-colors text-left border rounded-md flex items-center gap-1',
-          multiple ? 'flex-wrap' : 'flex-nowrap',
+          'w-full bg-surface-container-low transition-colors text-left border rounded-md flex gap-1',
+          multiple ? 'flex-col items-start h-[140px] overflow-hidden' : 'flex-nowrap items-center',
           isOpen ? 'ring-1 ring-primary border-primary' : 'border-outline-variant hover:bg-surface-container cursor-pointer',
-          SIZE_CLASSES[size],
-        ]" :style="props.multiple && currentLabels.length > 0 ? { minHeight: SIZE_CLASSES[size].split(' ')[0] } : {}"
+          multiple ? MULTI_SIZE_CLASSES[size] : SIZE_CLASSES[size],
+        ]"
           @click.stop="!isOpen && openDropdown()">
-          <!-- Closed state: show labels/text + icons -->
+          <!-- Closed state -->
           <template v-if="!isOpen">
-            <template v-if="multiple && currentLabels.length > 0">
-              <span v-for="l in currentLabels" :key="l.value"
-                class="inline-flex items-center gap-0.5 bg-surface-container-high pl-1.5 pr-0.5 py-px rounded text-[11px] font-medium text-primary shrink-0">
-                <span class="truncate max-w-[120px]">{{ l.label }}</span>
-                <button class="inline-flex items-center justify-center w-3 h-3 rounded-full hover:bg-black/10 shrink-0" @click.stop="removeValue(l.value)">
-                  <span class="material-symbols-outlined !text-[10px] leading-none">close</span>
-                </button>
-              </span>
+            <!-- Multi-select: chips area (flex-1 scroll) + bottom bar -->
+            <template v-if="multiple">
+              <div v-if="currentLabels.length > 0" class="flex-1 w-full flex flex-wrap items-start gap-1 overflow-y-auto">
+                <span v-for="l in currentLabels" :key="l.value"
+                  class="inline-flex items-center gap-0.5 bg-surface-container-high pl-1.5 pr-0.5 py-px rounded text-[11px] font-medium text-primary shrink-0">
+                  <span class="truncate max-w-[120px]">{{ l.label }}</span>
+                  <button class="inline-flex items-center justify-center w-3 h-3 rounded-full hover:bg-black/10 shrink-0" @click.stop="removeValue(l.value)">
+                    <span class="material-symbols-outlined !text-[10px] leading-none">close</span>
+                  </button>
+                </span>
+              </div>
+              <div v-else class="flex-1 w-full flex items-center">
+                <span class="text-secondary text-[11px]">{{ placeholder }}</span>
+              </div>
+              <div class="w-full flex items-center justify-end shrink-0">
+                <span class="material-symbols-outlined text-secondary text-[16px] leading-none">expand_more</span>
+              </div>
             </template>
-            <span v-if="!multiple" class="flex-1 min-w-0 truncate text-left">
-              <span v-if="!hasValue" class="text-secondary">{{ placeholder }}</span>
-              <span v-else class="text-primary font-medium">{{ currentLabels[0]?.label }}</span>
-            </span>
-            <div class="inline-flex items-center shrink-0 ml-auto">
-              <button v-if="hasValue && !multiple" class="inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-black/10" @click.stop="clearAll">
-                <span class="material-symbols-outlined !text-[14px] text-secondary leading-none">close</span>
-              </button>
-              <span class="material-symbols-outlined text-secondary text-[16px] leading-none">expand_more</span>
-            </div>
+            <!-- Single select: unchanged -->
+            <template v-else>
+              <span class="flex-1 min-w-0 truncate text-left">
+                <span v-if="!hasValue" class="text-secondary">{{ placeholder }}</span>
+                <span v-else class="text-primary font-medium">{{ currentLabels[0]?.label }}</span>
+              </span>
+              <div class="inline-flex items-center shrink-0 ml-auto">
+                <button v-if="hasValue" class="inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-black/10" @click.stop="clearAll">
+                  <span class="material-symbols-outlined !text-[14px] text-secondary leading-none">close</span>
+                </button>
+                <span class="material-symbols-outlined text-secondary text-[16px] leading-none">expand_more</span>
+              </div>
+            </template>
           </template>
           <!-- Open state: tags + input -->
           <template v-else>
-            <div v-if="multiple && currentLabels.length > 0" class="w-full flex flex-wrap items-center gap-1">
-              <span v-for="l in currentLabels" :key="l.value"
-                class="inline-flex items-center gap-0.5 bg-primary/10 pl-1.5 pr-0.5 py-px rounded text-[11px] font-medium text-primary shrink-0">
-                <span class="truncate max-w-[120px]">{{ l.label }}</span>
-                <button class="inline-flex items-center justify-center w-3 h-3 rounded-full hover:bg-primary/20 shrink-0" @click.stop="removeValue(l.value)">
-                  <span class="material-symbols-outlined !text-[10px] leading-none">close</span>
+            <!-- Multi-select: tags area (top, finite height) + textarea (flex-1) -->
+            <template v-if="multiple">
+              <div v-if="currentLabels.length > 0" class="w-full flex flex-wrap items-start gap-1 max-h-[60px] overflow-y-auto">
+                <span v-for="l in currentLabels" :key="l.value"
+                  class="inline-flex items-center gap-0.5 bg-primary/10 pl-1.5 pr-0.5 py-px rounded text-[11px] font-medium text-primary shrink-0">
+                  <span class="truncate max-w-[120px]">{{ l.label }}</span>
+                  <button class="inline-flex items-center justify-center w-3 h-3 rounded-full hover:bg-primary/20 shrink-0" @click.stop="removeValue(l.value)">
+                    <span class="material-symbols-outlined !text-[10px] leading-none">close</span>
+                  </button>
+                </span>
+              </div>
+              <div v-else class="w-full text-[11px] text-secondary">{{ placeholder }}</div>
+              <textarea
+                ref="searchInputRef"
+                v-model="searchText"
+                rows="2"
+                :placeholder="currentLabels.length > 0 ? '继续输入下一行（Shift+Enter 提交）' : '输入模型名，每行一个'"
+                class="flex-1 w-full min-h-0 mt-1 bg-transparent border-none px-2 py-1 text-label-md font-label-md text-primary placeholder:text-secondary resize-none focus:outline-none focus:ring-0"
+                @keydown="handleKeydown" @click.stop />
+            </template>
+            <!-- Single select: unchanged -->
+            <template v-else>
+              <div class="flex-1 flex items-center gap-1 min-w-0">
+                <input ref="searchInputRef" v-model="searchText" type="text"
+                  placeholder="输入模型名搜索或手动输入..."
+                  class="flex-1 min-w-0 bg-transparent border-none outline-none ring-0 focus:outline-none focus:ring-0 focus:border-none p-0 m-0 h-full text-primary font-medium placeholder:text-secondary text-label-md font-label-md"
+                  autocomplete="off" @keydown="handleKeydown" @click.stop />
+                <button v-if="!props.options" class="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded hover:bg-surface-container-highest"
+                  :class="fetchLoading ? 'animate-spin opacity-50' : ''" @click.stop="fetchModels" title="刷新模型列表">
+                  <span class="material-symbols-outlined text-[16px] text-secondary">{{ fetchLoading ? 'progress_activity' : 'refresh' }}</span>
                 </button>
-              </span>
-            </div>
-            <div class="flex-1 flex items-center gap-1 min-w-0">
-              <input ref="searchInputRef" v-model="searchText" type="text"
-                :placeholder="multiple && currentLabels.length > 0 ? '' : '输入模型名搜索或手动输入...'"
-                class="flex-1 min-w-0 bg-transparent border-none outline-none ring-0 focus:outline-none focus:ring-0 focus:border-none p-0 m-0 h-full text-primary font-medium placeholder:text-secondary text-label-md font-label-md"
-                autocomplete="off" @keydown="handleKeydown" @click.stop />
-              <button v-if="!props.options" class="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded hover:bg-surface-container-highest"
-                :class="fetchLoading ? 'animate-spin opacity-50' : ''" @click.stop="fetchModels" title="刷新模型列表">
-                <span class="material-symbols-outlined text-[16px] text-secondary">{{ fetchLoading ? 'progress_activity' : 'refresh' }}</span>
-              </button>
-            </div>
+              </div>
+            </template>
           </template>
         </div>
       </div>

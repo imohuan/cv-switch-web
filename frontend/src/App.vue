@@ -16,7 +16,7 @@ const API_FORMATS: Array<{ value: ApiFormat; label: string }> = [
 
 const NAV_ITEMS = [
   { id: 'status', name: '概览', icon: 'dashboard' },
-  { id: 'profiles', name: '任务 Profile', icon: 'folder_special' },
+  // { id: 'profiles', name: '任务 Profile', icon: 'folder_special' },
   { id: 'providers', name: 'Provider 管理', icon: 'dns' },
 ]
 
@@ -543,8 +543,8 @@ function setNewApiPreset() { formProviderType.value = 'newapi'; formCapabilities
           </div>
         </section>
 
-        <!-- Profiles -->
-        <section v-if="navTab === 'profiles'">
+        <!-- Profiles: 隐藏 (v-if="false") -->
+        <section v-if="false && navTab === 'profiles'">
           <div class="flex items-center justify-between mb-ax-md">
             <div>
               <h3 class="font-headline-sm text-headline-sm text-primary">任务 Profile</h3>
@@ -833,7 +833,7 @@ function setNewApiPreset() { formProviderType.value = 'newapi'; formCapabilities
         <div class="col-span-2 bg-surface-container-low border border-outline-variant rounded-lg p-ax-md space-y-ax-sm">
           <h4 class="font-label-md text-label-md font-semibold text-primary">Codex 模型目录</h4>
           <p class="font-body-sm text-[11px] text-secondary">选择 Codex 可用的模型列表，支持多选</p>
-          <div class="grid grid-cols-2 gap-ax-sm">
+          <div class="space-y-ax-sm">
             <AxModelSelect v-model="formCodexDefault" :options="fetchedModels" placeholder="Codex 默认模型" size="lg" />
             <AxModelSelect v-model="formCodexCatalogModels" :options="fetchedModels" multiple placeholder="选择 Codex 模型..." size="lg" />
           </div>
