@@ -82,6 +82,17 @@ export function writeCodexConfig(provider: Provider): { success: boolean; messag
       supports_websockets: false,
     };
 
+    // 推理深度：xhigh 让模型花更多算力深度思考，提升复杂任务质量
+    configToml.model_reasoning_effort = 'xhigh';
+    // 禁用 Codex 将对话记录上传到 OpenAI 服务器存储
+    configToml.disable_response_storage = true;
+    // 允许 Codex 在对话中联网搜索（如网页抓取、文档查询）
+    configToml.network_access = 'enabled';
+    // 确认已知悉 Windows WSL 环境设置要求，跳过首次启动的 WSL 提示
+    configToml.windows_wsl_setup_acknowledged = true;
+    // 启用 goals 功能：允许 Codex 自主规划并执行多步骤目标
+    configToml.features = { goals: true };
+
     const configTmp = CODEX_CONFIG_PATH + '.tmp';
     fs.writeFileSync(configTmp, stringifyToml(configToml), 'utf-8');
     fs.renameSync(configTmp, CODEX_CONFIG_PATH);
