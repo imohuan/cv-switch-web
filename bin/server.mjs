@@ -5,6 +5,7 @@
  *   start         后台启动服务（自动关闭旧服务）
  *   stop          停止服务
  *   restart       重启服务（先停后启）
+ *   serve         前台运行服务（适合 systemd 托管）
  *   kill          杀死所有 cv-switch-web 端口进程
  *   help          显示帮助（默认）
  *
@@ -15,7 +16,7 @@ import { spawn, exec } from 'node:child_process'
 import { request } from 'node:http'
 import { readFile, writeFile, unlink, access, mkdir } from 'node:fs/promises'
 import { join, dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { promisify } from 'node:util'
@@ -33,6 +34,40 @@ const DATA_HOME = join(homedir(), '.axtools', 'cv-switch-web')
 const PID_DIR = DATA_HOME
 const PID_FILE = join(PID_DIR, '.pid')
 const PORTS_FILE = join(PID_DIR, '.ports')
+
+function parsePort(value) {
+  const port = parseInt(value, 10)
+  if (isNaN(port) || port < 1 || port > 65535) {
+    console.log('\n  \u2717 非法端口号，范围: 1-65535\n')
+    process.exit(1)
+  }
+  return port
+}
+
+function getServerEnv(port) {
+  return {
+    ...process.env,
+    PORT: String(port),
+    NODE_PATH: join(ROOT, 'node_modules'),
+    DATA_DIR: join(DATA_HOME, 'data'),
+    COOKIES_DIR: join(DATA_HOME, 'cookies'),
+    OUTPUT_DIR: join(DATA_HOME, 'downloads'),
+    UPLOADS_DIR: join(DATA_HOME, 'uploads'),
+    REQUEST_LOG_DIR: join(DATA_HOME, 'requests'),
+    LOG_DIR: join(DATA_HOME, 'logs'),
+    VIDEOS_DIR: join(DATA_HOME, 'output', 'videos'),
+  }
+}
+
+async function ensureServerScript() {
+  try {
+    await access(SERVER_SCRIPT, constants.R_OK)
+  } catch {
+    console.log(`\n  \u2717 找不到服务脚本: ${SERVER_SCRIPT}`)
+    console.log('  请先运行 pnpm build\n')
+    process.exit(1)
+  }
+}
 
 async function ensurePidDir() {
   try {
@@ -181,6 +216,20 @@ async function fetchInfo(port) {
   })
 }
 
+async function waitForReady(port, child, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      return { ready: false, reason: `服务进程已退出，exitCode=${child.exitCode}` }
+    }
+    if (await fetchInfo(port) === 'cv-switch-web') {
+      return { ready: true }
+    }
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  return { ready: false, reason: `服务未在 ${timeoutMs}ms 内响应 /info` }
+}
+
 // ---- tryStop：停止当前 PID 文件记录的服务 ----
 async function tryStop() {
   let pid
@@ -209,13 +258,7 @@ async function cmdStart(port) {
   }
 
   // 检查 server 脚本是否存在
-  try {
-    await access(SERVER_SCRIPT, constants.R_OK)
-  } catch {
-    console.log(`\n  \u2717 找不到服务脚本: ${SERVER_SCRIPT}`)
-    console.log('  请先运行 pnpm build\n')
-    process.exit(1)
-  }
+  await ensureServerScript()
 
   // 记录端口
   await addPort(port)
@@ -227,19 +270,17 @@ async function cmdStart(port) {
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      NODE_PATH: join(ROOT, 'node_modules'),
-      DATA_DIR: join(DATA_HOME, 'data'),
-      COOKIES_DIR: join(DATA_HOME, 'cookies'),
-      OUTPUT_DIR: join(DATA_HOME, 'downloads'),
-      UPLOADS_DIR: join(DATA_HOME, 'uploads'),
-      REQUEST_LOG_DIR: join(DATA_HOME, 'requests'),
-      LOG_DIR: join(DATA_HOME, 'logs'),
-      VIDEOS_DIR: join(DATA_HOME, 'output', 'videos'),
-    },
+    env: getServerEnv(port),
   })
+
+  const readiness = await waitForReady(port, child)
+  if (!readiness.ready) {
+    await killPid(child.pid)
+    await removePort(port)
+    await removePidFile()
+    console.log(`\n  \u2717 服务启动失败: ${readiness.reason}\n`)
+    process.exit(1)
+  }
 
   child.unref() // 不阻塞父进程
   await writePid(child.pid)
@@ -300,6 +341,14 @@ async function cmdRestart(port) {
   await cmdStart(port)
 }
 
+// ---- serve 命令：前台运行，交给 systemd / supervisor 管理生命周期 ----
+async function cmdServe(port) {
+  await ensureServerScript()
+  Object.assign(process.env, getServerEnv(port))
+  console.log(`\n  cv-switch-web v${pkg.version} 前台运行中: http://localhost:${port}\n`)
+  await import(pathToFileURL(SERVER_SCRIPT).href)
+}
+
 // ---- kill 命令 ----
 async function cmdKill() {
   const ports = await readPorts()
@@ -348,6 +397,8 @@ program
   cv-switch-web stop                停止服务
   cv-switch-web restart             重启服务
   cv-switch-web restart --port 3000 指定端口重启
+  cv-switch-web serve               前台运行，适合 systemd
+  cv-switch-web serve --port 3000   指定端口前台运行
   cv-switch-web kill                杀死所有 cv-switch-web 端口进程
 `)
 
@@ -356,12 +407,7 @@ program
   .description('后台启动服务（自动关闭旧服务）')
   .option('-p, --port <port>', '监听端口', '8033')
   .action(async (opts) => {
-    const port = parseInt(opts.port, 10)
-    if (isNaN(port) || port < 1 || port > 65535) {
-      console.log('\n  \u2717 非法端口号，范围: 1-65535\n')
-      process.exit(1)
-    }
-    await cmdStart(port)
+    await cmdStart(parsePort(opts.port))
   })
 
 program
@@ -374,12 +420,15 @@ program
   .description('重启服务（先停后启）')
   .option('-p, --port <port>', '监听端口', '8033')
   .action(async (opts) => {
-    const port = parseInt(opts.port, 10)
-    if (isNaN(port) || port < 1 || port > 65535) {
-      console.log('\n  \u2717 非法端口号，范围: 1-65535\n')
-      process.exit(1)
-    }
-    await cmdRestart(port)
+    await cmdRestart(parsePort(opts.port))
+  })
+
+program
+  .command('serve')
+  .description('前台运行服务（适合 systemd 托管）')
+  .option('-p, --port <port>', '监听端口', '8033')
+  .action(async (opts) => {
+    await cmdServe(parsePort(opts.port))
   })
 
 program
