@@ -259,6 +259,20 @@ async function tryStop() {
   return ok
 }
 
+function printServerInfo({ port, pid, status, stopHint }) {
+  const text = String(port)
+  console.log(`
+  cv-switch-web v${pkg.version}  ${status}
+  ${'─'.repeat(54)}
+  本地地址  http://localhost:${text}
+  网络地址  http://0.0.0.0:${text}
+  PID        ${pid}
+  数据目录  ${RUNTIME_ROOT}
+  停止服务   ${stopHint}
+  ${'─'.repeat(54)}
+`)
+}
+
 // ---- start 命令 ----
 async function cmdStart(port) {
   // 先关闭旧服务
@@ -295,17 +309,12 @@ async function cmdStart(port) {
   child.unref() // 不阻塞父进程
   await writePid(child.pid)
 
-  const text = String(port)
-  console.log(`
-  cv-switch-web v${pkg.version}  \u2713 启动成功
-  ${'\u2500'.repeat(54)}
-  本地地址  http://localhost:${text}
-  网络地址  http://0.0.0.0:${text}
-  PID        ${child.pid}
-  数据目录  ${RUNTIME_ROOT}
-  停止服务   npx ${pkg.name} stop
-  ${'\u2500'.repeat(54)}
-`)
+  printServerInfo({
+    port,
+    pid: child.pid,
+    status: '✓ 启动成功',
+    stopHint: `npx ${pkg.name} stop`,
+  })
 
   // 自动打开浏览器
   const url = `http://localhost:${port}`
@@ -355,7 +364,12 @@ async function cmdRestart(port) {
 async function cmdServe(port) {
   await ensureServerScript()
   Object.assign(process.env, getServerEnv(port))
-  console.log(`\n  cv-switch-web v${pkg.version} 前台运行中: http://localhost:${port}\n`)
+  printServerInfo({
+    port,
+    pid: process.pid,
+    status: '前台运行中',
+    stopHint: 'Ctrl+C',
+  })
   await import(pathToFileURL(SERVER_SCRIPT).href)
 }
 
