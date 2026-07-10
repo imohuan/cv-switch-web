@@ -1,7 +1,8 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
 import type { Provider } from '../db.js';
 import { GLOBAL_HOME_DIR } from '../config.js';
+import { writeTrackedConfigFile } from './configChanges.js';
 
 const GEMINI_DIR = path.join(GLOBAL_HOME_DIR, '.gemini');
 const GEMINI_ENV_PATH = path.join(GEMINI_DIR, '.env');
@@ -45,10 +46,7 @@ export function writeGeminiConfig(provider: Provider): { success: boolean; messa
     envLines.push(`GEMINI_API_KEY=${provider.api_key}`);
     envLines.push(`GOOGLE_GEMINI_BASE_URL=${provider.base_url}`);
 
-    // Write atomically
-    const tmpPath = GEMINI_ENV_PATH + '.tmp';
-    fs.writeFileSync(tmpPath, envLines.join('\n') + '\n', 'utf-8');
-    fs.renameSync(tmpPath, GEMINI_ENV_PATH);
+    writeTrackedConfigFile(GEMINI_ENV_PATH, envLines.join('\n') + '\n', { base_url: provider.base_url });
 
     // Write settings.json
     let settings: Record<string, any> = {};
@@ -62,9 +60,7 @@ export function writeGeminiConfig(provider: Provider): { success: boolean; messa
       settings.model = provider.model;
     }
 
-    const settingsTmp = GEMINI_SETTINGS_PATH + '.tmp';
-    fs.writeFileSync(settingsTmp, JSON.stringify(settings, null, 2), 'utf-8');
-    fs.renameSync(settingsTmp, GEMINI_SETTINGS_PATH);
+    writeTrackedConfigFile(GEMINI_SETTINGS_PATH, JSON.stringify(settings, null, 2), { model: provider.model });
 
     return {
       success: true,

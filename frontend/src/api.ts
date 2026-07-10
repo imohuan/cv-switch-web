@@ -1,4 +1,4 @@
-const API_BASE = '/api'
+﻿const API_BASE = '/api'
 
 export interface Provider {
   id: string
@@ -38,6 +38,17 @@ export interface ProviderExtraConfig {
   }
 }
 
+export interface ModelTestResult {
+  ok: boolean
+  url: string
+  status: number
+  statusText: string
+  responseHeadersMs: number
+  firstContentMs: number | null
+  totalMs: number
+  preview: string
+}
+
 export interface AppStatus {
   app_type: string
   current_provider_id: string | null
@@ -48,6 +59,32 @@ export interface AppStatus {
     base_url?: string
   }
   updated_at: string
+}
+
+export interface WorkBuddyModel {
+  id: string
+  name: string
+  vendor: string
+  url: string
+  apiKey?: string
+  supportsToolCall: boolean
+  supportsImages: boolean
+  supportsReasoning: boolean
+  useCustomProtocol: boolean
+  reasoning?: {
+    defaultEffort?: string
+    supportedEfforts?: string[]
+    [key: string]: unknown
+  }
+  maxInputTokens?: number
+  maxOutputTokens?: number
+  [key: string]: unknown
+}
+
+export interface WorkBuddyModelsData {
+  exists: boolean
+  path: string
+  models: WorkBuddyModel[]
 }
 
 export interface Profile {
@@ -69,6 +106,15 @@ export interface Profile {
   }
   created_at: string
   updated_at: string
+}
+
+export type JsonPathSegment = string | number
+
+export interface ConfigFilePayload {
+  label: string
+  content: string
+  exists: boolean
+  changes?: Record<string, string>
 }
 
 export interface ApiResponse<T> {
@@ -101,9 +147,9 @@ export const api = {
   applyProfile: (id: string) =>
     request<Profile>(`/profiles/${id}/apply`, { method: 'POST' }),
   getProfileConfig: (id: string) =>
-    request<{ home_dir: string; app_type: string; files: Array<{ label: string; content: string; exists: boolean }> }>(`/profiles/${id}/config`),
+    request<{ home_dir: string; app_type: string; files: ConfigFilePayload[] }>(`/profiles/${id}/config`),
   getAppConfig: (appType: string) =>
-    request<{ home_dir: string; app_type: string; files: Array<{ label: string; content: string; exists: boolean }> }>(`/app/${appType}/config`),
+    request<{ home_dir: string; app_type: string; files: ConfigFilePayload[] }>(`/app/${appType}/config`),
   deleteProfile: (id: string) =>
     request<boolean>(`/profiles/${id}`, { method: 'DELETE' }),
 
@@ -114,6 +160,15 @@ export const api = {
   clearProvider: (appType: string) =>
     request<null>(`/switch/${appType}/clear`, { method: 'POST' }),
 
+  getWorkBuddyModels: () => request<WorkBuddyModelsData>('/workbuddy/models'),
+  saveWorkBuddyModel: (originalId: string | null, model: WorkBuddyModel) =>
+    request<WorkBuddyModel>(`/workbuddy/models/${encodeURIComponent(originalId || '__new__')}`, {
+      method: 'PUT',
+      body: JSON.stringify(model),
+    }),
+  deleteWorkBuddyModel: (id: string) =>
+    request<boolean>(`/workbuddy/models/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   fetchModels: (providerId: string) =>
     request<Array<{ id: string }>>(`/providers/${providerId}/models`),
 
@@ -122,4 +177,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ baseUrl, apiKey }),
     }),
+
+  testModel: (data: {
+    providerId?: string
+    baseUrl: string
+    apiKey: string
+    apiFormat: ApiFormat
+    model: string
+  }) => request<ModelTestResult>('/models/test', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
 }

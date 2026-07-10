@@ -1,10 +1,11 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
 import { stringify as stringifyToml } from 'smol-toml';
 import type { Provider, Profile } from '../db.js';
 import { bestFormatForApp, claudeModels, codexModels, publicBaseUrl } from './providerConfig.js';
 import { generateCodexModelCatalog } from './codexCatalog.js';
 import { GLOBAL_HOME_DIR, PROFILES_DIR } from '../config.js';
+import { writeTrackedConfigFile } from './configChanges.js';
 
 export interface ProfileResult {
   success: boolean;
@@ -50,11 +51,8 @@ function copyClaudeAuthState(homeDir: string) {
   }
 }
 
-function atomicWrite(filePath: string, content: string) {
-  ensureDir(path.dirname(filePath));
-  const tmpPath = `${filePath}.tmp`;
-  fs.writeFileSync(tmpPath, content, 'utf-8');
-  fs.renameSync(tmpPath, filePath);
+function atomicWrite(filePath: string, content: string, changes: Record<string, string> = {}) {
+  writeTrackedConfigFile(filePath, content, changes);
 }
 
 export function profileHomeDir(profile: Profile): string {

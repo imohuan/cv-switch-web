@@ -1,7 +1,8 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
 import type { Provider } from '../db.js';
 import { GLOBAL_HOME_DIR } from '../config.js';
+import { writeTrackedConfigFile } from './configChanges.js';
 
 const OPENCODE_CONFIG_PATH = path.join(GLOBAL_HOME_DIR, '.config', 'opencode', 'opencode.json');
 
@@ -58,10 +59,10 @@ export function writeOpenCodeConfig(provider: Provider): { success: boolean; mes
       ...(provider.api_format === 'openai_chat' ? { type: 'openai_compatible' } : {}),
     };
 
-    // Write atomically
-    const tmpPath = OPENCODE_CONFIG_PATH + '.tmp';
-    fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8');
-    fs.renameSync(tmpPath, OPENCODE_CONFIG_PATH);
+    writeTrackedConfigFile(OPENCODE_CONFIG_PATH, JSON.stringify(config, null, 2), {
+      base_url: provider.base_url,
+      model: provider.model,
+    });
 
     return {
       success: true,

@@ -6,13 +6,17 @@ import { writeCodexConfig, getCodexConfigStatus } from '../services/codex.js';
 import { writeClaudeConfig, getClaudeConfigStatus } from '../services/claude.js';
 import { writeGeminiConfig, getGeminiConfigStatus } from '../services/gemini.js';
 import { writeOpenCodeConfig, getOpenCodeConfigStatus } from '../services/opencode.js';
+import { deleteWorkBuddyModel, readWorkBuddyModels, saveWorkBuddyModel } from '../services/workbuddy.js';
 import { launchCommand, launchCommands, profileHomeDir, writeProfileConfig } from '../services/profiles.js';
 import { GLOBAL_HOME_DIR } from '../config.js';
 import { logger } from '../services/logger.js';
+import { readConfigPreviewFiles } from '../services/configPreview.js';
+import { fetchProviderModels, testProviderModel, type ModelApiFormat } from '../services/modelFetch.js';
 
 const router = Router();
 const VALID_APPS = ['codex', 'claude', 'gemini', 'opencode'] as const;
 const VALID_API_FORMATS = ['openai_chat', 'openai_responses', 'anthropic'] as const;
+const VALID_TEST_API_FORMATS: ModelApiFormat[] = [...VALID_API_FORMATS, 'gemini_native'];
 
 // UUID v4 generator (minimal, no dependency)
 function generateId(): string {
@@ -335,27 +339,7 @@ router.get('/profiles/:id/config', (req: Request, res: Response) => {
       }
     })();
 
-    const files: Array<{ label: string; content: string; exists: boolean }> = configFiles.map(f => {
-      let content = '';
-      let exists = false;
-      if (fs.existsSync(f.path)) {
-        try {
-          content = fs.readFileSync(f.path, 'utf-8');
-          // 对敏感字段做脱敏（API Key / Token）
-          if (f.label.endsWith('.json')) {
-            content = content.replace(/("api[_-]?key"|"token"|"ANTHROPIC_API_KEY"|"ANTHROPIC_AUTH_TOKEN"|"GEMINI_API_KEY"|"OPENAI_API_KEY")\s*:\s*"[^"]*"/gi,
-              (_, keyName) => `${keyName}: "***MASKED***"`);
-          } else if (f.label.endsWith('.env')) {
-            content = content.replace(/(API_KEY|TOKEN|KEY)\s*=\s*.+/gi,
-              (_, keyName) => `${keyName}=***MASKED***`);
-          }
-        } catch { content = '(读取失败)'; }
-        exists = true;
-      } else {
-        content = '(文件不存在)';
-      }
-      return { label: f.label, content, exists };
-    });
+    const files = readConfigPreviewFiles(configFiles);
 
     res.json({ success: true, data: { home_dir: homeDir, app_type: profile.app_type, files } });
   } catch (err: any) {
@@ -404,27 +388,7 @@ router.get('/app/:appType/config', (req: Request, res: Response) => {
     const homeDir = GLOBAL_HOME_DIR;
     const configFiles = globalConfigFiles(appType);
 
-    const files: Array<{ label: string; content: string; exists: boolean }> = configFiles.map(f => {
-      let content = '';
-      let exists = false;
-      if (fs.existsSync(f.path)) {
-        try {
-          content = fs.readFileSync(f.path, 'utf-8');
-          // 对敏感字段做脱敏
-          if (f.label.endsWith('.json')) {
-            content = content.replace(/("api[_-]?key"|"token"|"ANTHROPIC_API_KEY"|"ANTHROPIC_AUTH_TOKEN"|"GEMINI_API_KEY"|"OPENAI_API_KEY")\s*:\s*"[^"]*"/gi,
-              (_, keyName) => `${keyName}: "***MASKED***"`);
-          } else if (f.label.endsWith('.env')) {
-            content = content.replace(/(API_KEY|TOKEN|KEY)\s*=\s*.+/gi,
-              (_, keyName) => `${keyName}=***MASKED***`);
-          }
-        } catch { content = '(读取失败)'; }
-        exists = true;
-      } else {
-        content = '(文件不存在)';
-      }
-      return { label: f.label, content, exists };
-    });
+    const files = readConfigPreviewFiles(configFiles);
 
     res.json({ success: true, data: { home_dir: homeDir, app_type: appType, files } });
   } catch (err: any) {
@@ -541,6 +505,50 @@ function maskKey(key: string): string {
   return key.slice(0, 4) + '****' + key.slice(-4);
 }
 
+// ── WorkBuddy local models ──
+
+router.get('/workbuddy/models', (_req: Request, res: Response) => {
+  try {
+    const data = readWorkBuddyModels();
+    res.json({
+      success: true,
+      data: {
+        ...data,
+        models: data.models.map((model) =>
+          Object.fromEntries(Object.entries(model).filter(([key]) => key !== 'apiKey')),
+        ),
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/workbuddy/models/:id', (req: Request, res: Response) => {
+  try {
+    const input = req.body && typeof req.body === 'object' ? req.body : {};
+    if (input.apiKey === '***MASKED***') input.apiKey = '';
+    const model = saveWorkBuddyModel(input, req.params.id === '__new__' ? undefined : req.params.id);
+    const safeModel = Object.fromEntries(Object.entries(model).filter(([key]) => key !== 'apiKey'));
+    res.json({ success: true, data: safeModel });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/workbuddy/models/:id', (req: Request, res: Response) => {
+  try {
+    const deleted = deleteWorkBuddyModel(req.params.id);
+    if (!deleted) {
+      res.status(404).json({ success: false, error: 'WorkBuddy 模型不存在' });
+      return;
+    }
+    res.json({ success: true, data: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ── Fetch provider models ──
 
 router.get('/providers/:id/models', async (req: Request, res: Response) => {
@@ -551,29 +559,10 @@ router.get('/providers/:id/models', async (req: Request, res: Response) => {
       return;
     }
 
-    const baseUrl = provider.base_url.replace(/\/+$/, '');
-    const url = `${baseUrl}/models`;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (provider.api_key) headers['Authorization'] = `Bearer ${provider.api_key}`;
-
-    logger.models.fetchStart(provider.id, baseUrl);
-
-    const response = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
-    if (!response.ok) {
-      logger.models.fetchError(provider.id, response.status, response.statusText);
-      res.json({ success: false, error: `Provider returned ${response.status}: ${response.statusText}` });
-      return;
-    }
-
-    const json: any = await response.json();
-    let models: Array<{ id: string; object?: string }> = [];
-    if (Array.isArray(json.data)) models = json.data;
-    else if (Array.isArray(json)) models = json;
-
-    logger.models.fetchOk(provider.id, models.length);
-
-    const result = models.map(m => ({ id: m.id }));
-    res.json({ success: true, data: result });
+    logger.models.fetchStart(provider.id, provider.base_url);
+    const result = await fetchProviderModels({ baseUrl: provider.base_url, apiKey: provider.api_key });
+    logger.models.fetchOk(provider.id, result.models.length);
+    res.json({ success: true, data: result.models });
   } catch (err: any) {
     logger.models.fetchError(req.params.id, 0, err.message || 'Failed to fetch models');
     res.json({ success: false, error: err.message || 'Failed to fetch models' });
@@ -589,23 +578,47 @@ router.post('/models/fetch', async (req: Request, res: Response) => {
       res.status(400).json({ success: false, error: 'baseUrl is required' });
       return;
     }
-    const url = String(baseUrl).replace(/\/+$/, '') + '/models';
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (apiKey && typeof apiKey === 'string') headers['Authorization'] = `Bearer ${apiKey}`;
-
-    const response = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
-    if (!response.ok) {
-      res.json({ success: false, error: `Provider returned ${response.status}: ${response.statusText}` });
-      return;
-    }
-    const json: any = await response.json();
-    let models: Array<{ id: string }> = [];
-    if (Array.isArray(json.data)) models = json.data;
-    else if (Array.isArray(json)) models = json;
-
-    res.json({ success: true, data: models.map(m => ({ id: m.id })) });
+    const result = await fetchProviderModels({
+      baseUrl: String(baseUrl),
+      apiKey: typeof apiKey === 'string' ? apiKey : '',
+    });
+    res.json({ success: true, data: result.models });
   } catch (err: any) {
     res.json({ success: false, error: err.message || 'Failed to fetch models' });
+  }
+});
+
+// ── Test model connectivity ──
+
+router.post('/models/test', async (req: Request, res: Response) => {
+  try {
+    const provider = typeof req.body.providerId === 'string'
+      ? db.getProviderById(req.body.providerId)
+      : undefined;
+    const baseUrl = typeof req.body.baseUrl === 'string' && req.body.baseUrl.trim()
+      ? req.body.baseUrl.trim()
+      : provider?.base_url || '';
+    const apiKey = typeof req.body.apiKey === 'string' && req.body.apiKey
+      ? req.body.apiKey
+      : provider?.api_key || '';
+    const apiFormat = req.body.apiFormat as ModelApiFormat;
+    const model = typeof req.body.model === 'string' ? req.body.model.trim() : '';
+
+    if (!baseUrl || !model || !VALID_TEST_API_FORMATS.includes(apiFormat)) {
+      res.status(400).json({ success: false, error: 'Base URL、模型和 API 格式不能为空' });
+      return;
+    }
+
+    const result = await testProviderModel({ baseUrl, apiKey, apiFormat, model });
+    res.json({
+      success: result.ok,
+      data: result,
+      error: result.ok
+        ? undefined
+        : result.preview || `Provider returned ${result.status}: ${result.statusText}`,
+    });
+  } catch (err: any) {
+    res.json({ success: false, error: err.message || '模型连通性测试失败' });
   }
 });
 

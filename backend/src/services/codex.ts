@@ -1,10 +1,11 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import type { Provider } from '../db.js';
 import { GLOBAL_HOME_DIR } from '../config.js';
 import { bestFormatForApp, codexModels, publicBaseUrl } from './providerConfig.js';
 import { generateCodexModelCatalog } from './codexCatalog.js';
+import { writeTrackedConfigFile } from './configChanges.js';
 
 const CODEX_DIR = path.join(GLOBAL_HOME_DIR, '.codex');
 const CODEX_AUTH_PATH = path.join(CODEX_DIR, 'auth.json');
@@ -50,9 +51,7 @@ export function writeCodexConfig(provider: Provider): { success: boolean; messag
     }
     auth['OPENAI_API_KEY'] = apiKey;
 
-    const authTmp = CODEX_AUTH_PATH + '.tmp';
-    fs.writeFileSync(authTmp, JSON.stringify(auth, null, 2), 'utf-8');
-    fs.renameSync(authTmp, CODEX_AUTH_PATH);
+    writeTrackedConfigFile(CODEX_AUTH_PATH, JSON.stringify(auth, null, 2), { api_key: apiKey });
 
     // 2. Write config.toml（读取已有配置，只覆盖我们管理的字段）
     let configToml: Record<string, any> = {};
@@ -93,15 +92,16 @@ export function writeCodexConfig(provider: Provider): { success: boolean; messag
     // 启用 goals 功能：允许 Codex 自主规划并执行多步骤目标
     configToml.features = { goals: true };
 
-    const configTmp = CODEX_CONFIG_PATH + '.tmp';
-    fs.writeFileSync(configTmp, stringifyToml(configToml), 'utf-8');
-    fs.renameSync(configTmp, CODEX_CONFIG_PATH);
+    writeTrackedConfigFile(CODEX_CONFIG_PATH, stringifyToml(configToml), {
+      model: configToml.model as string,
+      base_url: baseUrl,
+    });
 
     // 3. Write model catalog（使用 codexCatalog.ts 中定义的完整 schema）
-    fs.writeFileSync(
+    writeTrackedConfigFile(
       CODEX_MODEL_CATALOG_PATH,
       JSON.stringify(generateCodexModelCatalog(provider), null, 2),
-      'utf-8',
+      { model_catalog: 'updated' },
     );
 
     return {

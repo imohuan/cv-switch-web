@@ -1,8 +1,9 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
 import type { Provider } from '../db.js';
 import { GLOBAL_HOME_DIR } from '../config.js';
 import { bestFormatForApp, claudeModels, publicBaseUrl } from './providerConfig.js';
+import { writeTrackedConfigFile } from './configChanges.js';
 
 const CLAUDE_SETTINGS_PATH = path.join(GLOBAL_HOME_DIR, '.claude', 'settings.json');
 
@@ -61,10 +62,16 @@ export function writeClaudeConfig(provider: Provider): { success: boolean; messa
     settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL = CLAUDE_SONNET;
     if (models.opusModel) settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL = CLAUDE_OPUS;
     
-    // Write atomically
-    const tmpPath = CLAUDE_SETTINGS_PATH + '.tmp';
-    fs.writeFileSync(tmpPath, JSON.stringify(settings, null, 2), 'utf-8');
-    fs.renameSync(tmpPath, CLAUDE_SETTINGS_PATH);
+    const changes: Record<string, string> = {
+      ANTHROPIC_BASE_URL: baseUrl,
+      ANTHROPIC_API_KEY: token,
+      ANTHROPIC_MODEL: CLAUDE_SONNET,
+      ...(models.smallFastModel ? { ANTHROPIC_SMALL_FAST_MODEL: CLAUDE_HAIKU } : {}),
+      ...(models.haikuModel || models.smallFastModel ? { ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_HAIKU } : {}),
+      ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_SONNET,
+      ...(models.opusModel ? { ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_OPUS } : {}),
+    };
+    writeTrackedConfigFile(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), changes);
 
     return {
       success: true,
