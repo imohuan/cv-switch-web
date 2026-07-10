@@ -165,7 +165,8 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
 </script>
 
 <template>
-  <AxDropdown v-model="open" placement="bottom-start" :offset="4" menu-width="200px" menu-max-width="320px" body-class="p-1 max-h-56 overflow-y-auto scrollbar-thin">
+  <AxDropdown v-model="open" placement="bottom-start" :offset="4" menu-width="200px" menu-max-width="320px"
+    body-class="p-1 max-h-56 overflow-y-auto scrollbar-thin">
     <template #trigger="{ open: isOpen, toggle }">
       <div class="w-full">
         <div :class="[
@@ -173,8 +174,7 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
           multiple ? 'flex-col items-start h-[140px] overflow-hidden' : 'flex-nowrap items-center',
           isOpen ? 'ring-1 ring-primary border-primary' : 'border-outline-variant hover:bg-surface-container cursor-pointer',
           multiple ? MULTI_SIZE_CLASSES[size] : SIZE_CLASSES[size],
-        ]"
-          @click.stop="!isOpen && openDropdown()">
+        ]" @click.stop="!isOpen && openDropdown()">
           <!-- Closed state -->
           <template v-if="!isOpen">
             <!-- Multi-select: chips area (flex-1 scroll) + bottom bar -->
@@ -183,16 +183,23 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
                 <span v-for="l in currentLabels" :key="l.value"
                   class="inline-flex items-center gap-0.5 bg-surface-container-high pl-1.5 pr-0.5 py-px rounded text-[11px] font-medium text-primary shrink-0">
                   <span class="truncate max-w-[120px]">{{ l.label }}</span>
-                  <button class="inline-flex items-center justify-center w-3 h-3 rounded-full hover:bg-black/10 shrink-0" @click.stop="removeValue(l.value)">
+                  <button
+                    class="inline-flex items-center justify-center w-3 h-3 rounded-full hover:bg-black/10 shrink-0"
+                    @click.stop="removeValue(l.value)">
                     <span class="material-symbols-outlined !text-[10px] leading-none">close</span>
                   </button>
                 </span>
+                <div class="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center">
+                  <span class="material-symbols-outlined text-secondary text-[16px] leading-none">expand_more</span>
+                </div>
               </div>
-              <div v-else class="flex-1 w-full flex items-center">
-                <span class="text-secondary text-[11px]">{{ placeholder }}</span>
-              </div>
-              <div class="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center">
-                <span class="material-symbols-outlined text-secondary text-[16px] leading-none">expand_more</span>
+              <div v-else class="w-full h-full flex flex-col gap-2 pr-5">
+                <!-- <span class="text-secondary text-[11px]">{{ placeholder }}</span> -->
+                <div class="flex flex-1 flex-col items-center justify-center gap-1 text-secondary">
+                  <span class="material-symbols-outlined text-[20px] leading-none">model_training</span>
+                  <span class="text-[11px]">暂未选择模型</span>
+                  <span class="text-[10px] opacity-70">点击选择或输入模型</span>
+                </div>
               </div>
             </template>
             <!-- Single select: unchanged -->
@@ -202,7 +209,9 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
                 <span v-else class="text-primary font-medium">{{ currentLabels[0]?.label }}</span>
               </span>
               <div class="inline-flex items-center shrink-0 ml-auto">
-                <button v-if="hasValue" class="inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-black/10" @click.stop="clearAll">
+                <button v-if="hasValue"
+                  class="inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-black/10"
+                  @click.stop="clearAll">
                   <span class="material-symbols-outlined !text-[14px] text-secondary leading-none">close</span>
                 </button>
                 <span class="material-symbols-outlined text-secondary text-[16px] leading-none">expand_more</span>
@@ -213,20 +222,20 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
           <template v-else>
             <!-- Multi-select: tags area (top, finite height) + textarea (flex-1) -->
             <template v-if="multiple">
-              <div v-if="currentLabels.length > 0" class="w-full flex flex-wrap items-start gap-1 max-h-[60px] overflow-y-auto">
+              <div v-if="currentLabels.length > 0"
+                class="w-full flex flex-wrap items-start gap-1 max-h-[60px] overflow-y-auto">
                 <span v-for="l in currentLabels" :key="l.value"
                   class="inline-flex items-center gap-0.5 bg-primary/10 pl-1.5 pr-0.5 py-px rounded text-[11px] font-medium text-primary shrink-0">
                   <span class="truncate max-w-[120px]">{{ l.label }}</span>
-                  <button class="inline-flex items-center justify-center w-3 h-3 rounded-full hover:bg-primary/20 shrink-0" @click.stop="removeValue(l.value)">
+                  <button
+                    class="inline-flex items-center justify-center w-3 h-3 rounded-full hover:bg-primary/20 shrink-0"
+                    @click.stop="removeValue(l.value)">
                     <span class="material-symbols-outlined !text-[10px] leading-none">close</span>
                   </button>
                 </span>
               </div>
               <div v-else class="w-full text-[11px] text-secondary">{{ placeholder }}</div>
-              <textarea
-                ref="searchInputRef"
-                v-model="searchText"
-                rows="2"
+              <textarea ref="searchInputRef" v-model="searchText" rows="2"
                 :placeholder="currentLabels.length > 0 ? '继续输入下一行（Shift+Enter 提交）' : '输入模型名，每行一个'"
                 class="flex-1 w-full min-h-0 mt-1 bg-transparent border-none px-2 py-1 text-label-md font-label-md text-primary placeholder:text-secondary resize-none focus:outline-none focus:ring-0"
                 @keydown="handleKeydown" @click.stop />
@@ -234,13 +243,14 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
             <!-- Single select: unchanged -->
             <template v-else>
               <div class="flex-1 flex items-center gap-1 min-w-0">
-                <input ref="searchInputRef" v-model="searchText" type="text"
-                  placeholder="输入模型名搜索或手动输入..."
+                <input ref="searchInputRef" v-model="searchText" type="text" placeholder="输入模型名搜索或手动输入..."
                   class="flex-1 min-w-0 bg-transparent border-none outline-none ring-0 focus:outline-none focus:ring-0 focus:border-none p-0 m-0 h-full text-primary font-medium placeholder:text-secondary text-label-md font-label-md"
                   autocomplete="off" @keydown="handleKeydown" @click.stop />
-                <button v-if="!props.options" class="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded hover:bg-surface-container-highest"
+                <button v-if="!props.options"
+                  class="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded hover:bg-surface-container-highest"
                   :class="fetchLoading ? 'animate-spin opacity-50' : ''" @click.stop="fetchModels" title="刷新模型列表">
-                  <span class="material-symbols-outlined text-[16px] text-secondary">{{ fetchLoading ? 'progress_activity' : 'refresh' }}</span>
+                  <span class="material-symbols-outlined text-[16px] text-secondary">{{ fetchLoading ?
+                    'progress_activity' : 'refresh' }}</span>
                 </button>
               </div>
             </template>
@@ -255,14 +265,17 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
           :class="(!multiple && currentValues[0] === opt.value) ? 'bg-primary text-on-primary font-medium'
             : highlightIndex === idx ? 'bg-surface-container-highest' : multiple && currentValues.includes(opt.value) ? 'bg-primary/10' : 'text-primary hover:bg-surface-container-low'"
           @click="selectOption(opt)" @mouseenter="highlightIndex = idx">
-          <span v-if="multiple" class="inline-flex items-center justify-center w-4 h-4 rounded border transition-colors shrink-0"
+          <span v-if="multiple"
+            class="inline-flex items-center justify-center w-4 h-4 rounded border transition-colors shrink-0"
             :class="currentValues.includes(opt.value) ? 'bg-primary border-primary' : 'border-outline-variant'">
-            <span v-if="currentValues.includes(opt.value)" class="material-symbols-outlined text-[12px] text-on-primary">check</span>
+            <span v-if="currentValues.includes(opt.value)"
+              class="material-symbols-outlined text-[12px] text-on-primary">check</span>
           </span>
           <span class="truncate">{{ opt.label }}</span>
         </button>
         <div v-if="filtered.length === 0 && searchText.trim()" class="py-2 px-3">
-          <button class="w-full text-left text-secondary hover:text-primary font-label-md text-label-md rounded-lg px-2 py-1 hover:bg-surface-container-low"
+          <button
+            class="w-full text-left text-secondary hover:text-primary font-label-md text-label-md rounded-lg px-2 py-1 hover:bg-surface-container-low"
             @click="commitSearch">
             使用自定义模型 "<span class="text-primary font-medium">{{ searchText.trim() }}</span>"
           </button>
