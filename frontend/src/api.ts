@@ -50,6 +50,7 @@ export interface ModelTestResult {
 }
 
 export interface AppStatus {
+  matching_profiles?: Array<{ id: string; name: string }>
   app_type: string
   current_provider_id: string | null
   current_provider_name: string | null
@@ -177,6 +178,36 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ baseUrl, apiKey }),
     }),
+
+
+  // Provider 模型管理
+  saveProviderModels: (providerId: string, models: Array<{
+    id: string
+    displayName?: string
+    contextWindow?: number
+    maxOutputTokens?: number
+    supportsImages?: boolean
+    supportsParallelToolCalls?: boolean
+    supportsReasoning?: boolean
+    defaultReasoningEffort?: string
+    supportedReasoningEfforts?: string[]
+    inputModalities?: string[]
+    baseInstructions?: string
+  }>) =>
+    request<{ models: any[] }>(`/providers/${providerId}/models`, { method: 'PUT', body: JSON.stringify({ models }) }),
+
+  getProviderModelsManage: (providerId: string) =>
+    request<{ models: any[] }>(`/providers/${providerId}/models/manage`),
+
+  getAllProviderModels: () =>
+    request<{ providers: Array<{ id: string; name: string; models: Array<{ id: string; displayName: string }> }> }>('/providers/models/all'),
+
+  // Profile 多平台
+  createMultiProfile: (data: { name: string; kind: string; targets: any[] }) =>
+    request<any>('/profiles', { method: 'POST', body: JSON.stringify(data) }),
+
+  updateProfile: (id: string, data: { name?: string; kind?: string; targets?: any[] }) =>
+    request<any>(`/profiles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   testModel: (data: {
     providerId?: string

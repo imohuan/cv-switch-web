@@ -13,7 +13,7 @@ import ProfileTab from './components/ProfileTab.vue'
 import { useAppData } from './composables/useAppData'
 
 const { triggerNotify } = useNotify()
-const { providers, profiles, statuses, loading, error, loadData, connectedCount, providerOptions } = useAppData()
+const { providers, profiles, statuses, loading, error, loadData, connectedCount, providerOptions, addProfile, updateProfileLocal, removeProfile } = useAppData()
 
 const navTab = ref('status')
 const liveTime = ref('')
@@ -50,7 +50,7 @@ onBeforeUnmount(() => {
         @add-provider="providerFormDialog?.openForm(null)"
       />
 
-      <main class="flex-1 overflow-y-auto px-margin py-ax-lg">
+      <main class="flex-1 overflow-y-auto px-margin pt-ax-xl pb-ax-lg">
         <StatusOverview
           v-if="navTab === 'status'"
           :providers="providers"
@@ -59,11 +59,7 @@ onBeforeUnmount(() => {
           @refresh="loadData"
         />
 
-        <ProfileTab
-          v-if="navTab === 'profiles'"
-          :providers="providers"
-          :profiles="profiles"
-        />
+        <ProfileTab v-if="navTab === `profiles`" :providers="providers" :profiles="profiles" @refresh="loadData" @add-profile="addProfile" @update-profile="updateProfileLocal" @remove-profile="removeProfile" />
 
         <ProviderList
           v-if="navTab === 'providers'"

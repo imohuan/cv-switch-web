@@ -54,10 +54,6 @@ const someSelected = computed(() =>
 
 // ---- 获取模型 ----
 async function fetchModels() {
-  if (props.externalModels) {
-    models.value = props.externalModels
-    return
-  }
   fetching.value = true
   fetchError.value = ""
   try {
@@ -157,7 +153,22 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-onMounted(() => document.addEventListener("keydown", onKeydown))
+// 编辑已有 Provider 时自动加载已保存的模型列表
+onMounted(async () => {
+  if (props.providerId && !props.externalModels) {
+    try {
+      const res = await api.getProviderModelsManage(props.providerId)
+      if (res.success && res.data?.models && res.data.models.length > 0) {
+        models.value = (res.data!).models.map((m: any) => ({
+          value: m.id || m.model,
+          label: m.displayName || m.id || m.model,
+        }))
+        emit("models-fetched", models.value)
+      }
+    } catch { /* silent */ }
+  }
+  document.addEventListener("keydown", onKeydown)
+})
 onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown))
 
 defineExpose({ fetchModels })

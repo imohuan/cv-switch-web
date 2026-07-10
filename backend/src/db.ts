@@ -214,6 +214,16 @@ export function createProfile(profile: Omit<Profile, 'created_at' | 'updated_at'
   return created;
 }
 
+export function updateProfile(id: string, updates: Partial<Omit<Profile, 'id' | 'created_at'>>): Profile | undefined {
+  const existing = getProfileById(id);
+  if (!existing) return undefined;
+
+  const updated = { ...existing, ...updates, id: existing.id, created_at: existing.created_at, updated_at: now() };
+  store.profiles = store.profiles.map((p) => p.id === id ? updated : p);
+  saveStore();
+  return updated;
+}
+
 export function deleteProfile(id: string): boolean {
   const existed = Boolean(getProfileById(id));
   if (!existed) return false;
@@ -236,5 +246,6 @@ export default {
   getProfileById,
   getProfilesByProviderId,
   createProfile,
+  updateProfile,
   deleteProfile,
 };

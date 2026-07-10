@@ -1,8 +1,10 @@
 ﻿<script setup lang="ts">
 import { ref } from 'vue'
-import AxModelSelect from './AxModelSelect.vue'
+import GroupedModelSelect from './GroupedModelSelect.vue'
 import AxButton from './ui/AxButton.vue'
-import type { Profile } from '../api'
+import { api, type Profile } from '../api'
+import { onMounted } from 'vue'
+import { useNotify } from './ui'
 
 const props = defineProps<{
   providers: any[]
@@ -10,10 +12,35 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  apply: [profileId: string]
-  save: [data: { name: string; targets: ProfileTargetData[] }]
-  delete: [profileId: string]
+  refresh: []
+  "add-profile": [profile: any]
+  "update-profile": [id: string, data: any]
+  "remove-profile": [id: string]
 }>()
+
+const { triggerNotify } = useNotify()
+
+// 所有 Provider 的模型列表（供下拉框用）
+const allProviderModels = ref<Array<{ value: string; label: string; group: string }>>([])
+
+async function loadAllProviderModels() {
+  try {
+    const res = await api.getAllProviderModels()
+    if (res.success && res.data?.providers) {
+      const models: Array<{ value: string; label: string; group: string }> = []
+      for (const p of res.data.providers) {
+        for (const m of p.models) {
+          if (!models.some(existing => existing.value === m.id)) {
+            models.push({ value: m.id, label: m.displayName || m.id, group: p.name })
+          }
+        }
+      }
+      allProviderModels.value = models
+    }
+  } catch { /* ignore */ }
+}
+
+onMounted(loadAllProviderModels)
 
 const PLATFORMS = [
   { id: 'codex', label: 'Codex CLI', icon: 'terminal' },
@@ -24,7 +51,7 @@ const PLATFORMS = [
 ] as const
 
 interface ProfileTargetData {
-  appType: string
+  app_type: string
   model: string
   claudeHaiku?: string
   claudeSonnet?: string
@@ -68,7 +95,8 @@ const showDialog = ref(false)
 const editingProfileId = ref<string | null>(null)
 const profileName = ref('')
 
-function openCreateDialog() {
+async function openCreateDialog() {
+  await loadAllProviderModels()
   editingProfileId.value = null
   profileName.value = ''
   selectedPlatforms.value = []
@@ -76,34 +104,113 @@ function openCreateDialog() {
   showDialog.value = true
 }
 
-function openEditDialog(profile: Profile) {
+async function openEditDialog(profile: Profile) {
+  await loadAllProviderModels()
   editingProfileId.value = profile.id
   profileName.value = profile.name
   selectedPlatforms.value = []
   initPlatformConfigs()
+
+  // 解析 targets 回填
+  try {
+    const extra = JSON.parse(profile.extra_config || '{}')
+    if (extra.targets && Array.isArray(extra.targets)) {
+      for (const t of extra.targets) {
+        if (PLATFORMS.some(p => p.id === t.app_type)) {
+          selectedPlatforms.value.push(t.app_type)
+          platformConfigs.value[t.app_type] = {
+            model: t.model || '',
+            claudeHaiku: t.claude_haiku || '',
+            claudeSonnet: t.claude_sonnet || '',
+            claudeOpus: t.claude_opus || '',
+            codexModels: Array.isArray(t.codex_models) ? t.codex_models : [],
+          }
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
   showDialog.value = true
 }
 
-function handleSave() {
+async function handleSave() {
   if (!profileName.value.trim()) return
   const targets: ProfileTargetData[] = []
   for (const p of PLATFORMS) {
     if (!isPlatformSelected(p.id)) continue
     const cfg = platformConfigs.value[p.id]
-    const t: ProfileTargetData = { appType: p.id, model: cfg.model }
-    if (p.id === 'claude') { t.claudeHaiku = cfg.claudeHaiku; t.claudeSonnet = cfg.claudeSonnet; t.claudeOpus = cfg.claudeOpus }
-    if (p.id === 'codex') { t.codexModels = cfg.codexModels }
+    const t: ProfileTargetData = { app_type: p.id, model: cfg.model }
+    if (p.id === 'claude') { t.claude_haiku = cfg.claudeHaiku; t.claude_sonnet = cfg.claudeSonnet; t.claude_opus = cfg.claudeOpus }
+    if (p.id === 'codex') { t.codex_models = cfg.codexModels }
     targets.push(t)
   }
   if (targets.length === 0) return
-  emit('save', { name: profileName.value.trim(), targets })
-  showDialog.value = false
+
+  try {
+    if (editingProfileId.value) {
+      const res = await api.updateProfile(editingProfileId.value, {
+        name: profileName.value.trim(),
+        kind: 'bundle',
+        targets,
+      })
+      if (res.success && res.data) {
+        showDialog.value = false
+        emit('update-profile', editingProfileId.value, res.data)
+        triggerNotify('Profile 已更新', 'success')
+      } else {
+        triggerNotify(res.error || '更新失败', 'error')
+      }
+    } else {
+      const res = await api.createMultiProfile({
+        name: profileName.value.trim(),
+        kind: 'bundle',
+        targets,
+      })
+      if (res.success && res.data) {
+        showDialog.value = false
+        emit('add-profile', res.data)
+        triggerNotify('Profile 已创建', 'success')
+      } else {
+        triggerNotify(res.error || '创建失败', 'error')
+      }
+    }
+  } catch (e: any) {
+    triggerNotify(e?.message || '操作失败', 'error')
+  }
 }
 
-function handleApply() {
-  emit('apply', '__all__')
+async function handleApply(profileId?: string) {
+  const id = profileId || props.profiles[0]?.id
+  if (!id) return
+  try {
+    const res = await api.applyProfile(id)
+    if (res.success) {
+      emit('refresh')
+      triggerNotify('Profile 已应用', 'success')
+    } else {
+      triggerNotify(res.error || '应用失败', 'error')
+    }
+  } catch (e: any) {
+    triggerNotify(e?.message || '应用失败', 'error')
+  }
+}
+
+async function handleDelete(profileId: string) {
+  if (!confirm('确定删除此 Profile？')) return
+  try {
+    const res = await api.deleteProfile(profileId)
+    if (res.success) {
+      emit('remove-profile', profileId)
+      triggerNotify('Profile 已删除', 'info')
+    } else {
+      triggerNotify(res.error || '删除失败', 'error')
+    }
+  } catch (e: any) {
+    triggerNotify(e?.message || '删除失败', 'error')
+  }
 }
 </script>
+
 <template>
   <div>
     <!-- 头部 -->
@@ -116,7 +223,7 @@ function handleApply() {
     </div>
 
     <!-- 空状态 -->
-    <div v-if="profiles.length === 0"
+    <div v-if="props.profiles.length === 0"
       class="text-center font-body-sm text-body-sm text-secondary border border-dashed border-outline-variant rounded-lg p-ax-lg">
       <span class="material-symbols-outlined text-[32px] text-outline mb-ax-sm block">folder_off</span>
       <p>暂无 Profile 预设。</p>
@@ -149,9 +256,9 @@ function handleApply() {
             </div>
           </div>
           <div class="flex gap-ax-sm ml-ax-md">
-            <AxButton size="lg" @click="handleApply">应用</AxButton>
+            <AxButton size="lg" @click="() => handleApply()">应用</AxButton>
             <AxButton size="lg" variant="outline" @click="openEditDialog(profile)">编辑</AxButton>
-            <AxButton size="lg" variant="danger" @click="$emit('delete', profile.id)">删除</AxButton>
+            <AxButton size="lg" variant="danger" @click="handleDelete(profile.id)">删除</AxButton>
           </div>
         </div>
       </div>
@@ -201,9 +308,9 @@ function handleApply() {
             <span class="font-label-md text-label-md font-semibold text-primary">Codex CLI</span>
           </div>
           <div class="mb-ax-sm">
-            <AxModelSelect v-model="platformConfigs.codex.model" placeholder="默认模型（来自所有 Provider）" size="lg" />
+            <GroupedModelSelect v-model="platformConfigs.codex.model" placeholder="默认模型" size="lg" :options="allProviderModels" />
           </div>
-          <AxModelSelect v-model="platformConfigs.codex.codexModels" multiple placeholder="模型列表（多选，来自所有 Provider）" size="lg" />
+          <GroupedModelSelect v-model="platformConfigs.codex.codexModels" multiple placeholder="模型列表（多选）" size="lg" :options="allProviderModels" />
           <p class="font-body-sm text-[10px] text-secondary mt-0.5">这些模型将出现在 Codex 的模型选择器中</p>
         </div>
 
@@ -214,12 +321,12 @@ function handleApply() {
             <span class="font-label-md text-label-md font-semibold text-primary">Claude Code</span>
           </div>
           <div class="mb-ax-sm">
-            <AxModelSelect v-model="platformConfigs.claude.model" placeholder="默认模型（来自所有 Provider）" size="lg" />
+            <GroupedModelSelect v-model="platformConfigs.claude.model" placeholder="默认模型" size="lg" :options="allProviderModels" />
           </div>
           <div class="grid grid-cols-3 gap-ax-sm">
-            <AxModelSelect v-model="platformConfigs.claude.claudeHaiku" placeholder="Haiku" size="lg" />
-            <AxModelSelect v-model="platformConfigs.claude.claudeSonnet" placeholder="Sonnet" size="lg" />
-            <AxModelSelect v-model="platformConfigs.claude.claudeOpus" placeholder="Opus" size="lg" />
+            <GroupedModelSelect v-model="platformConfigs.claude.claudeHaiku" placeholder="Haiku" size="lg" :options="allProviderModels" />
+            <GroupedModelSelect v-model="platformConfigs.claude.claudeSonnet" placeholder="Sonnet" size="lg" :options="allProviderModels" />
+            <GroupedModelSelect v-model="platformConfigs.claude.claudeOpus" placeholder="Opus" size="lg" :options="allProviderModels" />
           </div>
         </div>
 
@@ -229,7 +336,7 @@ function handleApply() {
             <span class="material-symbols-outlined text-[16px] text-primary">diamond</span>
             <span class="font-label-md text-label-md font-semibold text-primary">Gemini CLI</span>
           </div>
-          <AxModelSelect v-model="platformConfigs.gemini.model" placeholder="模型（来自所有 Provider）" size="lg" />
+          <GroupedModelSelect v-model="platformConfigs.gemini.model" placeholder="模型" size="lg" :options="allProviderModels" />
         </div>
 
         <!-- OpenCode -->
@@ -238,7 +345,7 @@ function handleApply() {
             <span class="material-symbols-outlined text-[16px] text-primary">code</span>
             <span class="font-label-md text-label-md font-semibold text-primary">OpenCode</span>
           </div>
-          <AxModelSelect v-model="platformConfigs.opencode.model" placeholder="模型（来自所有 Provider）" size="lg" />
+          <GroupedModelSelect v-model="platformConfigs.opencode.model" placeholder="模型" size="lg" :options="allProviderModels" />
         </div>
 
         <!-- WorkBuddy -->
@@ -247,7 +354,7 @@ function handleApply() {
             <span class="material-symbols-outlined text-[16px] text-primary">deployed_code</span>
             <span class="font-label-md text-label-md font-semibold text-primary">WorkBuddy</span>
           </div>
-          <AxModelSelect v-model="platformConfigs.workbuddy.model" placeholder="模型（来自所有 Provider）" size="lg" />
+          <GroupedModelSelect v-model="platformConfigs.workbuddy.model" placeholder="模型" size="lg" :options="allProviderModels" />
           <div class="mt-ax-sm bg-amber-50 border border-amber-200 rounded-lg p-ax-xs">
             <p class="font-body-sm text-[11px] text-amber-800 flex items-center gap-1">
               <span class="material-symbols-outlined text-[14px]">info</span>

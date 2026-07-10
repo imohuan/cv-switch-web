@@ -31,6 +31,17 @@ export function useProviderForm() {
     editingProvider.value = provider
     fetchedModels.value = []
     const extra = parseExtra(provider?.extra_config)
+
+    // 编辑时从已保存的 models 恢复模型标签（避免刷新后变空）
+    // 优先 extra_config.models（新格式），fallback extra_config.codex.models（旧格式）
+    const savedModels = extra.models || extra.codex?.models || []
+    if (savedModels.length > 0) {
+      fetchedModels.value = savedModels.map((m: any) => ({
+        value: m.id || m.model,
+        label: m.displayName || m.id || m.model,
+      }))
+    }
+
     formName.value = provider?.name || ''
     formBaseUrl.value = provider?.base_url || ''
     formApiKey.value = ''

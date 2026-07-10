@@ -35,6 +35,17 @@ export function useAppData() {
     providers.value.map(p => ({ value: p.id, label: p.name })),
   )
 
+  // 增量操作：无感刷新
+  function addProfile(profile: Profile) {
+    profiles.value = [...profiles.value, profile]
+  }
+  function updateProfileLocal(id: string, data: Partial<Profile>) {
+    profiles.value = profiles.value.map(p => p.id === id ? { ...p, ...data } : p)
+  }
+  function removeProfile(id: string) {
+    profiles.value = profiles.value.filter(p => p.id !== id)
+  }
+
   onMounted(loadData)
 
   return {
@@ -46,5 +57,8 @@ export function useAppData() {
     loadData,
     connectedCount,
     providerOptions,
+    addProfile,
+    updateProfileLocal,
+    removeProfile,
   }
 }

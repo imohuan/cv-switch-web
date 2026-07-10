@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ref } from 'vue'
 import { STATUS_APPS, APP_LABELS } from '../constants'
 import { api, type Provider, type AppStatus } from '../api'
@@ -8,6 +8,15 @@ import AxButton from './ui/AxButton.vue'
 import WorkBuddyModels from './WorkBuddyModels.vue'
 import LocalConfigViewer from './LocalConfigViewer.vue'
 import { useConfigViewer } from '../composables/useConfigViewer'
+async function handleApplyProfile(profileId: string) {
+  const res = await api.applyProfile(profileId)
+  if (res.success) {
+    emit('refresh')
+    triggerNotify('Profile 已应用', 'success')
+  } else {
+    triggerNotify(res.error || '应用失败', 'error')
+  }
+}
 
 const props = defineProps<{
   providers: Provider[]
@@ -55,11 +64,11 @@ async function handleClear(appType: string) {
     </div>
 
     <!-- App Tabs -->
-    <div class="bg-surface-container-lowest border border-outline-variant rounded-lg">
+    <div class="flex flex-col gap-ax-md">
       <!-- Tab bar -->
-      <div class="flex items-center gap-0 overflow-x-auto border-b border-outline-variant px-ax-md">
+      <div class="flex items-center gap-0 overflow-x-auto overflow-y-hidden flex-nowrap border border-outline-variant rounded-lg bg-surface-container-lowest px-ax-md">
         <button v-for="app in STATUS_APPS" :key="app.id"
-          class="relative flex items-center gap-ax-xs px-ax-md py-ax-sm font-label-md text-label-md transition-all duration-150 cursor-pointer border-b-2 -mb-px"
+          class="relative flex items-center gap-ax-xs px-ax-md py-ax-sm font-label-md text-label-md whitespace-nowrap transition-all duration-150 cursor-pointer border-b-2 -mb-px"
           :class="statusAppTab === app.id
             ? 'border-primary text-primary font-semibold'
             : 'border-transparent text-secondary hover:text-primary hover:bg-surface-container-low'"
@@ -103,6 +112,20 @@ async function handleClear(appType: string) {
             <div class="bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
               <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">Base URL</span>
               <p class="font-label-md text-label-md text-primary mt-0.5 truncate">{{ statuses[statusAppTab].live_config_status?.base_url || '-' }}</p>
+            </div>
+          </div>
+
+                    <!-- 应用 Profile -->
+          <div class="mt-ax-sm bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
+            <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider block mb-ax-xs">应用 Profile 预设</span>
+            <div class="flex gap-ax-sm">
+              <select
+                class="flex-1 h-7 px-2 rounded-md border border-outline-variant bg-surface-container-low text-label-md text-primary"
+                @change="(e: Event) => { const sel = (e.target as HTMLSelectElement).value; if (sel) handleApplyProfile(sel) }"
+              >
+                <option value="">选择 Profile 应用...</option>
+                <option v-for="p in (statuses[statusAppTab]?.matching_profiles || [])" :key="p.id" :value="p.id">{{ p.name }}</option>
+              </select>
             </div>
           </div>
 

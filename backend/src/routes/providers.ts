@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import * as db from '../db.js';
 import fs from 'fs';
 import path from 'path';
@@ -216,8 +216,71 @@ router.get('/profiles', (_req: Request, res: Response) => {
 
 router.post('/profiles', (req: Request, res: Response) => {
   try {
-    const { name, app_type, provider_id } = req.body;
+    const { name, app_type, provider_id, kind, targets } = req.body
 
+    // ── 新格式：多平台 targets ──
+    if (kind && Array.isArray(targets) && targets.length > 0) {
+      if (!name) {
+        res.status(400).json({ success: false, error: 'name is required' })
+        return
+      }
+
+      for (const t of targets) {
+        if (!t.app_type || !VALID_APPS.includes(t.app_type)) {
+          res.status(400).json({ success: false, error: `Invalid target app_type: ${t.app_type}` })
+          return
+        }
+        if (!t.model) {
+          res.status(400).json({ success: false, error: `target model is required for ${t.app_type}` })
+          return
+        }
+      }
+
+      const extra: any = {
+        kind: kind || 'bundle',
+        targets: targets.map((t: any) => ({
+          app_type: t.app_type,
+          model: t.model,
+          ...(t.app_type === 'claude' ? {
+            claude_haiku: t.claude_haiku || undefined,
+            claude_sonnet: t.claude_sonnet || undefined,
+            claude_opus: t.claude_opus || undefined,
+          } : {}),
+          ...(t.app_type === 'codex' ? {
+            codex_models: Array.isArray(t.codex_models) ? t.codex_models : [],
+          } : {}),
+        })),
+      }
+
+      const primaryAppType = targets[0].app_type
+      const firstProviderId = db.getAllProviders()[0]?.id || ''
+
+      const profile = db.createProfile({
+        id: generateId(),
+        name: String(name).trim(),
+        app_type: primaryAppType,
+        provider_id: firstProviderId,
+        slug: uniqueProfileSlug(name),
+        extra_config: JSON.stringify(extra),
+      })
+
+      res.json({
+        success: true,
+        message: 'Profile created',
+        data: {
+          ...profile,
+          provider_name: null,
+          provider_model: null,
+          provider_base_url: null,
+          home_dir: profileHomeDir(profile),
+          command: launchCommand(profile),
+          commands: launchCommands(profile),
+        },
+      })
+      return
+    }
+
+    // ── 旧格式：单 app_type + 单 provider_id（向后兼容） ──
     if (!name || !app_type || !provider_id) {
       res.status(400).json({ success: false, error: 'name, app_type and provider_id are required' });
       return;
@@ -265,8 +328,57 @@ router.post('/profiles', (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+})
 
+
+// PUT /api/profiles/:id — 编辑 Profile（名称 + targets）
+router.put('/profiles/:id', (req: Request, res: Response) => {
+  try {
+    const profile = db.getProfileById(req.params.id)
+    if (!profile) {
+      res.status(404).json({ success: false, error: 'Profile not found' })
+      return
+    }
+
+    const { name, kind, targets } = req.body
+    const updates: Partial<db.Profile> = {}
+
+    if (typeof name === 'string' && name.trim()) {
+      updates.name = name.trim()
+      updates.slug = uniqueProfileSlug(name)
+    }
+
+    // 更新 targets（写入 extra_config）
+    if (kind && Array.isArray(targets)) {
+      let extra: any
+      try { extra = JSON.parse(profile.extra_config || '{}') } catch { extra = {} }
+      extra.kind = kind
+      extra.targets = targets.map((t: any) => ({
+        app_type: t.app_type,
+        model: t.model,
+        ...(t.app_type === 'claude' ? {
+          claude_haiku: t.claude_haiku || undefined,
+          claude_sonnet: t.claude_sonnet || undefined,
+          claude_opus: t.claude_opus || undefined,
+        } : {}),
+        ...(t.app_type === 'codex' ? {
+          codex_models: Array.isArray(t.codex_models) ? t.codex_models : [],
+        } : {}),
+      }))
+      updates.extra_config = JSON.stringify(extra)
+    }
+
+    const updated = db.updateProfile(profile.id, updates)
+    if (!updated) {
+      res.status(404).json({ success: false, error: 'Profile not found' })
+      return
+    }
+
+    res.json({ success: true, data: updated })
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
 router.post('/profiles/:id/apply', (req: Request, res: Response) => {
   try {
     const profile = db.getProfileById(req.params.id);
@@ -274,6 +386,60 @@ router.post('/profiles/:id/apply', (req: Request, res: Response) => {
       res.status(404).json({ success: false, error: 'Profile not found' });
       return;
     }
+
+    // 解析 extra_config，判断是否多平台 targets 格式
+    let extra: any
+    try { extra = JSON.parse(profile.extra_config || '{}') } catch { extra = {} }
+
+    if (extra.kind && Array.isArray(extra.targets) && extra.targets.length > 0) {
+      // ── 多平台 apply ──
+      const results: Array<{ app_type: string; success: boolean; message: string }> = []
+
+      for (const target of extra.targets) {
+        // 查找匹配该模型的 Provider
+        const allProviders = db.getAllProviders()
+        let matchedProvider = null
+
+        for (const p of allProviders) {
+          let pextra: any
+          try { pextra = JSON.parse(p.extra_config || '{}') } catch { pextra = {} }
+          const pmodels = Array.isArray(pextra.models) ? pextra.models : (Array.isArray(pextra.codex?.models) ? pextra.codex.models : [])
+          if (pmodels.some((m: any) => (m.id || m.model) === target.model)) {
+            matchedProvider = p
+            break
+          }
+        }
+
+        // Fallback: 用第一个 Provider
+        if (!matchedProvider) matchedProvider = allProviders[0]
+
+        if (!matchedProvider) {
+          results.push({ app_type: target.app_type, success: false, message: 'No provider available' })
+          continue
+        }
+
+        // 构造临时 Profile 用于 writeProfileConfig
+        const tempProfile: db.Profile = {
+          ...profile,
+          app_type: target.app_type,
+          provider_id: matchedProvider.id,
+        }
+
+        // 用 target 的 model 覆盖 Provider 的 model
+        const effectiveProvider = { ...matchedProvider, model: target.model }
+
+        const result = writeProfileConfig(tempProfile, effectiveProvider);
+        if (result.success) {
+          db.setCurrentProvider(target.app_type, matchedProvider.id)
+        }
+        results.push({ app_type: target.app_type, success: result.success, message: result.message })
+      }
+
+      res.json({ success: true, message: 'Applied to ' + results.length + ' platforms', data: { results } })
+      return
+    }
+
+    // ── 旧格式 apply（向后兼容） ──
     const provider = db.getProviderById(profile.provider_id);
     if (!provider) {
       res.status(404).json({ success: false, error: 'Provider not found' });
@@ -289,7 +455,7 @@ router.post('/profiles/:id/apply', (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+})
 
 router.delete('/profiles/:id', (req: Request, res: Response) => {
   try {
@@ -415,11 +581,23 @@ router.get('/status', (_req: Request, res: Response) => {
         case 'opencode': configStatus = getOpenCodeConfigStatus(); break;
       }
       
+            // 查找该 app_type 下有哪些 Profile 的 targets 包含此平台
+      const matchingProfiles = db.getAllProfiles().filter((p) => {
+        try {
+          const e = JSON.parse(p.extra_config || '{}')
+          if (e.targets && Array.isArray(e.targets)) {
+            return e.targets.some((t: any) => t.app_type === s.app_type)
+          }
+          return p.app_type === s.app_type
+        } catch { return p.app_type === s.app_type }
+      }).map((p) => ({ id: p.id, name: p.name }))
+
       statuses[s.app_type] = {
         app_type: s.app_type,
         current_provider_id: s.current_provider_id,
         current_provider_name: provider?.name || null,
-        live_config_status: configStatus,
+                live_config_status: configStatus,
+        matching_profiles: matchingProfiles,
         updated_at: s.updated_at,
       };
     }
@@ -549,6 +727,31 @@ router.delete('/workbuddy/models/:id', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/providers/models/all — 所有 Provider 模型汇总
+router.get('/providers/models/all', (_req: Request, res: Response) => {
+  try {
+    const providers = db.getAllProviders()
+    const result = providers.map((provider) => {
+      let extra: any
+      try { extra = JSON.parse(provider.extra_config || '{}') } catch { extra = {} }
+      const models = Array.isArray(extra.models) && extra.models.length > 0
+        ? extra.models
+        : Array.isArray(extra.codex?.models) ? extra.codex.models : []
+      return {
+        id: provider.id,
+        name: provider.name,
+        models: models.map((m: any) => ({
+          id: m.id || m.model || '',
+          displayName: m.displayName || m.id || m.model || '',
+        })),
+      }
+    })
+    res.json({ success: true, data: { providers: result } })
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // ── Fetch provider models ──
 
 router.get('/providers/:id/models', async (req: Request, res: Response) => {
@@ -638,5 +841,57 @@ router.get('/logs', (_req: Request, res: Response) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+
+// ===== cc-switch-web v2 新增路由 =====
+
+// PUT /api/providers/:id/models — 全量覆盖保存模型选择
+router.put('/providers/:id/models', (req: Request, res: Response) => {
+  try {
+    const provider = db.getProviderById(req.params.id)
+    if (!provider) { res.status(404).json({ success: false, error: 'Provider not found' }); return }
+    const models: Array<any> = Array.isArray(req.body?.models) ? req.body.models : []
+    let extra: any
+    try { extra = JSON.parse(provider.extra_config || '{}') } catch { extra = {} }
+    if (!extra || typeof extra !== 'object' || Array.isArray(extra)) extra = {}
+    extra.models = models.map((m: any) => ({
+      id: String(m.id || '').trim(),
+      displayName: m.displayName || undefined,
+      contextWindow: typeof m.contextWindow === 'number' ? m.contextWindow : undefined,
+      maxOutputTokens: typeof m.maxOutputTokens === 'number' ? m.maxOutputTokens : undefined,
+      supportsImages: typeof m.supportsImages === 'boolean' ? m.supportsImages : undefined,
+      supportsParallelToolCalls: typeof m.supportsParallelToolCalls === 'boolean' ? m.supportsParallelToolCalls : undefined,
+      supportsReasoning: typeof m.supportsReasoning === 'boolean' ? m.supportsReasoning : undefined,
+      defaultReasoningEffort: m.defaultReasoningEffort || undefined,
+      supportedReasoningEfforts: Array.isArray(m.supportedReasoningEfforts) ? m.supportedReasoningEfforts : undefined,
+      inputModalities: Array.isArray(m.inputModalities) ? m.inputModalities : undefined,
+      baseInstructions: m.baseInstructions || undefined,
+    })).filter((m: any) => m.id)
+    if (!extra.codex) extra.codex = {}
+    extra.codex.models = extra.models
+    db.updateProvider(provider.id, { extra_config: JSON.stringify(extra) })
+    res.json({ success: true, data: { models: extra.models } })
+  } catch (err: any) { res.status(500).json({ success: false, error: err.message }) }
+})
+
+// GET /api/providers/:id/models/manage — 读取已保存的模型列表
+router.get('/providers/:id/models/manage', (req: Request, res: Response) => {
+  try {
+    const provider = db.getProviderById(req.params.id)
+    if (!provider) { res.status(404).json({ success: false, error: 'Provider not found' }); return }
+    let extra: any
+    try { extra = JSON.parse(provider.extra_config || '{}') } catch { extra = {} }
+    const models = Array.isArray(extra.models) && extra.models.length > 0
+      ? extra.models
+      : (Array.isArray(extra.codex?.models) ? extra.codex.models : [])
+    res.json({ success: true, data: { models } })
+  } catch (err: any) { res.status(500).json({ success: false, error: err.message }) }
+})
+
+// POST /api/profiles — 支持多平台 targets（新格式），向后兼容旧格式
+// （注意：此路由会覆盖上面的旧 POST /profiles，因为 Express 按注册顺序匹配，后面注册的优先级低，
+//  但由于路径完全相同，实际只会命中先注册的那个。这里需要用不同的方式处理。）
+//
+// 方案：不在文件末尾加新路由，而是直接修改原有 POST /profiles 路由
 
 export default router;
