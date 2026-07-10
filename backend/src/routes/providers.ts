@@ -10,6 +10,7 @@ import { deleteWorkBuddyModel, readWorkBuddyModels, saveWorkBuddyModel } from '.
 import { launchCommand, launchCommands, profileHomeDir, writeProfileConfig } from '../services/profiles.js';
 import { GLOBAL_HOME_DIR } from '../config.js';
 import { logger } from '../services/logger.js';
+import { configChangeStore } from '../services/configChanges.js';
 import { readConfigPreviewFiles } from '../services/configPreview.js';
 import { fetchProviderModels, testProviderModel, type ModelApiFormat } from '../services/modelFetch.js';
 
@@ -664,7 +665,7 @@ function applyProviderToApp(appType: string, provider: db.Provider): { success: 
   const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
 
   switch (appType) {
-    case 'codex': return writeCodexConfig(provider, virtualAccount);
+    case 'codex': return writeCodexConfig(virtualAccount);
     case 'claude': return writeClaudeConfig(provider);
     case 'gemini': return writeGeminiConfig(provider);
     case 'opencode': return writeOpenCodeConfig(provider);
@@ -911,11 +912,11 @@ router.post('/codex/virtual-account/toggle', (req: Request, res: Response) => {
     // 更新全局虚拟账号状态
     const updatedStatus = db.setVirtualAccountEnabled('codex', enabled);
 
-    // 如果 Codex 当前已连接 Provider，立即重新写 auth.json
+    // 如果 Codex 当前已连接 Provider，立即重新写配置
     if (updatedStatus.current_provider_id) {
       const provider = db.getProviderById(updatedStatus.current_provider_id);
       if (provider) {
-        const result = writeCodexConfig(provider, enabled);
+        const result = writeCodexConfig(enabled);
         res.json({
           success: result.success,
           message: enabled ? '虚拟账号已启用' : '虚拟账号已禁用',

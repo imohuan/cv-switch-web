@@ -1,49 +1,38 @@
-﻿import fs from 'fs';
+import fs from 'fs';
 import path from 'path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
-import type { Provider } from '../db.js';
+import * as db from '../db.js';
 import { GLOBAL_HOME_DIR } from '../config.js';
 import { bestFormatForApp, codexModels, publicBaseUrl } from './providerConfig.js';
-import { generateCodexModelCatalog } from './codexCatalog.js';
-import { writeTrackedConfigFile } from './configChanges.js';
+import { generateAggregatedModelCatalog } from './codexCatalog.js';
+import { writeTrackedConfigFile, configChangeStore } from './configChanges.js';
 
 const CODEX_DIR = path.join(GLOBAL_HOME_DIR, '.codex');
 const CODEX_AUTH_PATH = path.join(CODEX_DIR, 'auth.json');
 const CODEX_CONFIG_PATH = path.join(CODEX_DIR, 'config.toml');
 const CODEX_MODEL_CATALOG_PATH = path.join(CODEX_DIR, 'cc-switch-web-model-catalog.json');
-const CODEX_MODEL_PROVIDER_ID = 'custom';
+const ROUTER_PROVIDER_ID = 'cv-switch-router';
 
 /**
- * Write Codex CLI configuration from a Provider.
+ * Write Codex CLI configuration with all Providers.
  *
- * Codex uses two files:
- * - ~/.codex/auth.json:  contains API key（兼容性保留，部分版本会检查）
- * - ~/.codex/config.toml: contains model + model_provider config
- *
- * ⚠️ 不使用 env_key 模式。env_key 要求环境变量存在，终端启动时未设会报
- *    "Missing environment variable: OPENAI_API_KEY"。
- *    改用 api_key 直接写入 config.toml，Codex 从文件读取。
+ * 模仿 AiMaMi 架构：
+ * - 为每个 Provider 注册直连 model_provider + profile
+ * - 注册一个路由 model_provider（cv-switch-router）
+ * - 顶层 model_provider 指向路由 provider
+ * - model_catalog 聚合所有 Provider 的模型
+ * - 虚拟账号控制路由 provider 的 requires_openai_auth
  */
-export function writeCodexConfig(provider: Provider, virtualAccount = false): { success: boolean; message: string } {
+export function writeCodexConfig(virtualAccount = false): { success: boolean; message: string } {
   try {
     if (!fs.existsSync(CODEX_DIR)) {
       fs.mkdirSync(CODEX_DIR, { recursive: true });
     }
 
-    const format = bestFormatForApp(provider, 'codex');
-    const useProxy = format === 'openai_chat';
-    const baseUrl = useProxy
-      ? codexChatAdapterBaseUrl(provider)
-      : provider.base_url;
-    const models = codexModels(provider);
+    const allProviders = db.getAllProviders();
 
-    // Proxy 模式下 Proxy 会注入真实 key，config 里写 PROXY_MANAGED 占位。
-    // 直连模式写 Provider 真实 key。
-    const apiKey = useProxy ? 'PROXY_MANAGED' : provider.api_key;
-
-        // 1. Write auth.json
+    // 1. Write auth.json
     if (virtualAccount) {
-      // 虚拟账号模式：写完整假 JWT
       const email = 'niuniu@woyao.pro';
       const name = 'NIUNIU WOYAO';
       const userId = 'user-niuniu-woyao-pro-unlock';
@@ -77,85 +66,119 @@ export function writeCodexConfig(provider: Provider, virtualAccount = false): { 
         OPENAI_API_KEY: 'PROXY_MANAGED',
       };
 
-      writeTrackedConfigFile(CODEX_AUTH_PATH, JSON.stringify(auth, null, 2), { api_key: 'PROXY_MANAGED', virtual: 'true' });
+      writeTrackedConfigFile(CODEX_AUTH_PATH, JSON.stringify(auth, null, 2), { virtual_account: 'enabled' });
     } else {
-      // 普通模式
       const auth: Record<string, string> = {};
       if (fs.existsSync(CODEX_AUTH_PATH)) {
         try {
           const existing = JSON.parse(fs.readFileSync(CODEX_AUTH_PATH, 'utf-8'));
-          // 如果当前是虚拟账号，不保留旧字段
           if (!existing.aimami_router_unlock_auth) {
             Object.assign(auth, existing);
           }
         } catch { /* ignore */ }
       }
-      auth['OPENAI_API_KEY'] = apiKey;
-      writeTrackedConfigFile(CODEX_AUTH_PATH, JSON.stringify(auth, null, 2), { api_key: apiKey });
+      auth['OPENAI_API_KEY'] = 'PROXY_MANAGED';
+      writeTrackedConfigFile(CODEX_AUTH_PATH, JSON.stringify(auth, null, 2), { virtual_account: 'disabled' });
     }
 
-    // 2. Write config.toml（读取已有配置，只覆盖我们管理的字段）
+    // 记录虚拟账号状态变更
+    configChangeStore.record(CODEX_AUTH_PATH, {
+      virtual_account: virtualAccount ? 'enabled' : 'disabled',
+      user_id: 'user-niuniu-woyao-pro-unlock',
+    });
+
+    // 2. Write config.toml
     let configToml: Record<string, any> = {};
     if (fs.existsSync(CODEX_CONFIG_PATH)) {
       try {
-        const existingContent = fs.readFileSync(CODEX_CONFIG_PATH, 'utf-8');
-        configToml = parseToml(existingContent) as Record<string, any>;
-      } catch { /* ignore parse errors */ }
+        configToml = parseToml(fs.readFileSync(CODEX_CONFIG_PATH, 'utf-8')) as Record<string, any>;
+      } catch { /* ignore */ }
     }
 
-    configToml.model = models.defaultModel;
-    configToml.model_provider = CODEX_MODEL_PROVIDER_ID;
+    // 顶层配置
+    configToml.model_provider = ROUTER_PROVIDER_ID;
     configToml.model_catalog_json = CODEX_MODEL_CATALOG_PATH;
+    configToml.model_reasoning_effort = 'xhigh';
+    configToml.disable_response_storage = true;
+    configToml.network_access = 'enabled';
+    configToml.windows_wsl_setup_acknowledged = true;
+    configToml.features = { goals: true };
 
-    if (!configToml.model_providers) {
-      configToml.model_providers = {};
+    if (!configToml.model_providers) configToml.model_providers = {};
+    if (!configToml.profiles) configToml.profiles = {};
+
+    // 清理旧的 cv-switch 管理的 provider/profile（避免残留）
+    for (const key of Object.keys(configToml.model_providers)) {
+      if (key === ROUTER_PROVIDER_ID || allProviders.some(p => p.id === key)) {
+        // 保留，后续覆盖
+      } else if (key.startsWith('aimami_relay_') || key === 'aimai1' || key === 'custom') {
+        // 保留 AiMaMi 和旧自定义 provider（不删除用户已有配置）
+      }
     }
 
-    configToml.model_providers[CODEX_MODEL_PROVIDER_ID] = {
-      name: provider.name,
-      base_url: baseUrl,
-      // api_key 直接内联，不依赖环境变量
-      api_key: apiKey,
+    // 为每个 Provider 注册直连 provider + profile
+    for (const provider of allProviders) {
+      const format = bestFormatForApp(provider, 'codex');
+      const useProxy = format === 'openai_chat';
+      const baseUrl = useProxy
+        ? `${publicBaseUrl()}/proxy/codex/by-provider/${provider.id}/v1`
+        : provider.base_url;
+      const apiKey = useProxy ? 'PROXY_MANAGED' : provider.api_key;
+      const { defaultModel } = codexModels(provider);
+
+      configToml.model_providers[provider.id] = {
+        name: provider.name,
+        base_url: baseUrl,
+        api_key: apiKey,
+        wire_api: 'responses',
+        requires_openai_auth: false,
+        supports_websockets: false,
+      };
+
+      configToml.profiles[provider.id] = {
+        model_provider: provider.id,
+        model: defaultModel,
+      };
+    }
+
+    // 路由 Provider
+    const routerBaseUrl = `${publicBaseUrl()}/proxy/codex/router/v1`;
+    configToml.model_providers[ROUTER_PROVIDER_ID] = {
+      name: 'cv-switch 智能路由',
+      base_url: routerBaseUrl,
+      api_key: 'PROXY_MANAGED',
       wire_api: 'responses',
-      // 自定义 provider 不需要 OpenAI OAuth 登录
       requires_openai_auth: virtualAccount,
       supports_websockets: false,
     };
 
-    // 推理深度：xhigh 让模型花更多算力深度思考，提升复杂任务质量
-    configToml.model_reasoning_effort = 'xhigh';
-    // 禁用 Codex 将对话记录上传到 OpenAI 服务器存储
-    configToml.disable_response_storage = true;
-    // 允许 Codex 在对话中联网搜索（如网页抓取、文档查询）
-    configToml.network_access = 'enabled';
-    // 确认已知悉 Windows WSL 环境设置要求，跳过首次启动的 WSL 提示
-    configToml.windows_wsl_setup_acknowledged = true;
-    // 启用 goals 功能：允许 Codex 自主规划并执行多步骤目标
-    configToml.features = { goals: true };
+    configToml.profiles[ROUTER_PROVIDER_ID] = {
+      model_provider: ROUTER_PROVIDER_ID,
+      model: allProviders[0]?.id || 'unknown',
+    };
 
+    const providerIds = allProviders.map(p => p.id).join(', ');
     writeTrackedConfigFile(CODEX_CONFIG_PATH, stringifyToml(configToml), {
-      model: configToml.model as string,
-      base_url: baseUrl,
+      model_provider: ROUTER_PROVIDER_ID,
+      providers: providerIds || 'none',
+      virtual_account: virtualAccount ? 'true' : 'false',
     });
 
-    // 3. Write model catalog（使用 codexCatalog.ts 中定义的完整 schema）
+    // 3. Write model catalog（聚合所有 Provider 模型）
+    const catalog = generateAggregatedModelCatalog(allProviders);
     writeTrackedConfigFile(
       CODEX_MODEL_CATALOG_PATH,
-      JSON.stringify(generateCodexModelCatalog(provider), null, 2),
-      { model_catalog: 'updated' },
+      JSON.stringify(catalog, null, 2),
+      { model_catalog: 'aggregated', model_count: String(catalog.models.length) },
     );
 
     return {
       success: true,
-      message: `Codex config written: model=${configToml.model}, base_url=${baseUrl}`,
+      message: `Codex config written: router=${ROUTER_PROVIDER_ID}, providers=[${providerIds}], models=${catalog.models.length}`,
     };
   } catch (err: any) {
     return { success: false, message: `Failed to write Codex config: ${err.message}` };
   }
-}
-
-function codexChatAdapterBaseUrl(provider: Provider): string {
-  return `${publicBaseUrl()}/proxy/codex/${provider.id}/v1`;
 }
 
 /** Check current Codex config status */

@@ -315,3 +315,57 @@ export function generateCodexModelCatalog(provider: Provider): ModelsResponse {
     }),
   };
 }
+
+/**
+ * 聚合所有 Provider 的模型到一个 model_catalog。
+ * 每个模型的 slug 格式为 {providerId}::{modelName}。
+ */
+export function generateAggregatedModelCatalog(providers: Provider[]): ModelsResponse {
+  const allModels: ModelInfo[] = [];
+  let priority = 0;
+
+  for (const provider of providers) {
+    const { models } = codexModels(provider);
+    for (const item of models) {
+      const modelSlug = item.model;
+      const fullSlug = provider.id + "::" + modelSlug;
+      const displayName = provider.name + " / " + (item.displayName || modelSlug);
+      const contextWindow = Number(item.contextWindow) || 128000;
+      const modalities = (item.inputModalities || ["text"]) as InputModality[];
+
+      allModels.push({
+        slug: fullSlug,
+        display_name: displayName,
+        description: provider.name + " → " + modelSlug,
+        model_provider_ref: provider.id,
+        default_reasoning_level: "medium",
+        supported_reasoning_levels: [
+          { effort: "minimal", description: "Minimal reasoning effort" },
+          { effort: "low", description: "Low reasoning effort" },
+          { effort: "medium", description: "Medium reasoning effort" },
+          { effort: "high", description: "High reasoning effort" },
+        ],
+        shell_type: "default",
+        supports_parallel_tool_calls: item.supportsParallelToolCalls ?? true,
+        visibility: "list",
+        supported_in_api: true,
+        priority: priority++,
+        service_tiers: [],
+        base_instructions: item.baseInstructions || ("You are a helpful coding assistant powered by " + modelSlug + "."),
+        supports_reasoning_summaries: true,
+        support_verbosity: false,
+        default_verbosity: null,
+        apply_patch_tool_type: null,
+        truncation_policy: { mode: "tokens", limit: 100000 },
+        experimental_supported_tools: [],
+        availability_nux: null,
+        upgrade: null,
+        context_window: contextWindow,
+        input_modalities: modalities,
+      });
+    }
+  }
+
+  return { models: allModels };
+}
+
