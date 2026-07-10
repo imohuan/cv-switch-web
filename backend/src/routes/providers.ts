@@ -659,15 +659,18 @@ router.post('/switch/:appType/:providerId', (req: Request, res: Response) => {
 // ── Helper ──
 
 function applyProviderToApp(appType: string, provider: db.Provider): { success: boolean; message: string } {
+  // Codex 读取全局虚拟账号状态
+  const codexStatus = appType === 'codex' ? db.getAppStatus('codex') : undefined;
+  const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
+
   switch (appType) {
-    case 'codex': return writeCodexConfig(provider);
+    case 'codex': return writeCodexConfig(provider, virtualAccount);
     case 'claude': return writeClaudeConfig(provider);
     case 'gemini': return writeGeminiConfig(provider);
     case 'opencode': return writeOpenCodeConfig(provider);
     default: return { success: false, message: `Unknown app type: ${appType}` };
   }
 }
-
 // ── API Key masking ──
 // Return providers with masked API keys for safe display
 router.get('/providers-safe', (_req: Request, res: Response) => {
