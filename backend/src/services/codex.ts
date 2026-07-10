@@ -121,7 +121,7 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
       const format = bestFormatForApp(provider, 'codex');
       const useProxy = format === 'openai_chat';
       const baseUrl = useProxy
-        ? `${publicBaseUrl()}/proxy/codex/by-provider/${provider.id}/v1`
+        ? `${publicBaseUrl()}/proxy/codex/${provider.id}/v1`
         : provider.base_url;
       const apiKey = useProxy ? 'PROXY_MANAGED' : provider.api_key;
       const { defaultModel } = codexModels(provider);
