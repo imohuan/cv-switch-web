@@ -46,21 +46,7 @@ function verifyVirtualAccountAuth(req: Request): { ok: boolean; message?: string
     return { ok: true };
   }
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return { ok: false, message: 'Missing or invalid Authorization header. Virtual account requires Bearer token.' };
-  }
-
-  const token = authHeader.slice(7);
-  const payload = decodeJwtPayload(token);
-  if (!payload) {
-    return { ok: false, message: 'Invalid JWT token format.' };
-  }
-
-  if (payload.user_id !== VIRTUAL_ACCOUNT_USER_ID) {
-    return { ok: false, message: `Unknown user: ${payload.user_id || 'null'}` };
-  }
-
+  // requires_openai_auth=false, Codex does not send auth header; skip JWT check
   return { ok: true };
 }
 

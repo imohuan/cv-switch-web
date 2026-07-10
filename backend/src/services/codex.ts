@@ -154,7 +154,7 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
       base_url: routerBaseUrl,
       api_key: 'PROXY_MANAGED',
       wire_api: 'responses',
-      requires_openai_auth: virtualAccount,
+      requires_openai_auth: false,
       supports_websockets: false,
     };
 
