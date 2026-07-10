@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import * as db from '../db.js';
 import fs from 'fs';
 import path from 'path';
@@ -436,13 +436,13 @@ router.post('/profiles/:id/apply', (req: Request, res: Response) => {
 
         const result = writeProfileConfig(tempProfile, effectiveProvider);
         if (result.success) {
-          db.setCurrentProvider(target.app_type, matchedProvider.id)
+          db.setCurrentProvider(target.app_type, matchedProvider.id, profile.name)
           // 更新全局配置文件（各平台实时生效）
           switch (target.app_type) {
             case "codex": {
               const codexStatus = db.getAppStatus("codex");
               const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
-              writeCodexConfig(virtualAccount, matchedProvider.id);
+              writeCodexConfig(virtualAccount, matchedProvider.id, target.codex_models);
               break;
             }
             case "claude":
@@ -472,7 +472,7 @@ router.post('/profiles/:id/apply', (req: Request, res: Response) => {
 
     const result = writeProfileConfig(profile, provider);
     if (result.success) {
-      db.setCurrentProvider(profile.app_type, provider.id);
+      db.setCurrentProvider(profile.app_type, provider.id, profile.name);
       // 更新全局配置文件
       switch (profile.app_type) {
         case "codex": {
@@ -642,6 +642,7 @@ router.get('/status', (_req: Request, res: Response) => {
         current_provider_id: s.current_provider_id,
         current_provider_name: provider?.name || null,
         virtual_account_enabled: s.virtual_account_enabled ?? false,
+        current_profile_name: s.current_profile_name ?? null,
         live_config_status: configStatus,
         matching_profiles: matchingProfiles,
         updated_at: s.updated_at,
@@ -662,7 +663,7 @@ router.post('/switch/:appType/clear', (req: Request, res: Response) => {
       res.status(400).json({ success: false, error: `Invalid app type. Must be one of: ${VALID_APPS.join(', ')}` });
       return;
     }
-    db.setCurrentProvider(appType, null);
+    db.setCurrentProvider(appType, null, null);
     // 清理实际配置文件
     switch (appType) {
       case "codex":
@@ -707,7 +708,7 @@ router.post('/switch/:appType/:providerId', (req: Request, res: Response) => {
     const result = applyProviderToApp(appType, provider);
     
     if (result.success) {
-      db.setCurrentProvider(appType, providerId);
+      db.setCurrentProvider(appType, providerId, null);
     }
     
     res.json({ success: result.success, message: result.message, data: { appType, providerId } });

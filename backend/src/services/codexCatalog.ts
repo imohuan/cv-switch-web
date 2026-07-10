@@ -1,4 +1,4 @@
-/**
+﻿/**
  * codexCatalog.ts — Codex model_catalog.json 生成器
  *
  * ─────────────────────────────────────────────────────────────────────────────
@@ -320,13 +320,17 @@ export function generateCodexModelCatalog(provider: Provider): ModelsResponse {
  * 聚合所有 Provider 的模型到一个 model_catalog。
  * 每个模型的 slug 格式为 {providerId}::{modelName}。
  */
-export function generateAggregatedModelCatalog(providers: Provider[]): ModelsResponse {
+export function generateAggregatedModelCatalog(providers: Provider[], modelFilter?: string[]): ModelsResponse {
   const allModels: ModelInfo[] = [];
   let priority = 0;
 
   for (const provider of providers) {
     const { models } = codexModels(provider);
     for (const item of models) {
+      // 如果指定了 modelFilter，只生成选中的模型
+      if (modelFilter && modelFilter.length > 0 && !modelFilter.includes(item.model)) {
+        continue;
+      }
       const modelSlug = item.model;
       const nameSlug = provider.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || provider.id;
       const fullSlug = nameSlug + "::" + modelSlug;

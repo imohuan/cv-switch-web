@@ -1,6 +1,7 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref, computed } from "vue"
 import AxDropdown from "./ui/AxDropdown.vue"
+import AxTooltip from "./ui/AxTooltip.vue"
 import type { ControlSize } from "./ui/types"
 
 export interface GroupedModel {
@@ -71,17 +72,50 @@ const hasValue = computed(() => currentValues.value.length > 0)
 
 const currentLabels = computed(() => {
   return currentValues.value.map(v => {
-    const found = props.options.find(o => o.value === v)
-    return { value: v, label: found?.label || String(v) }
+    const raw = String(v)
+    // 解析合成 key "group::value" 或纯 value
+    const sep = raw.indexOf("::")
+    let group = ""
+    let value = raw
+    if (sep > 0) {
+      group = raw.slice(0, sep)
+      value = raw.slice(sep + 2)
+    }
+    const found = props.options.find(o => o.value === value && o.group === group)
+    return { value: raw, label: found?.label || value, group: found?.group || group }
   })
 })
 
+// 按 label 去重合并：同名标签只显示一个，带计数 badge 和 tooltip
+const mergedLabels = computed(() => {
+  const map = new Map<string, { label: string; count: number; groups: string[]; values: (string | number)[] }>()
+  for (const l of currentLabels.value) {
+    if (map.has(l.label)) {
+      const entry = map.get(l.label)!
+      entry.count++
+      entry.values.push(l.value)
+      if (l.group && !entry.groups.includes(l.group)) {
+        entry.groups.push(l.group)
+      }
+    } else {
+      map.set(l.label, { label: l.label, count: 1, groups: l.group ? [l.group] : [], values: [l.value] })
+    }
+  }
+  return [...map.values()]
+})
+
+// 合成 key：group + "::" + value，用于区分不同 provider 下的同名模型
+function makeKey(m: GroupedModel): string {
+  return m.group + "::" + m.value
+}
+
 function selectModel(model: GroupedModel) {
   if (props.multiple) {
-    const cur = [...currentValues.value]
-    const idx = cur.indexOf(model.value)
+    const cur = [...currentValues.value] as string[]
+    const key = makeKey(model)
+    const idx = cur.indexOf(key)
     if (idx >= 0) cur.splice(idx, 1)
-    else cur.push(model.value)
+    else cur.push(key)
     emit("update:modelValue", cur as any)
   } else {
     emit("update:modelValue", model.value)
@@ -89,13 +123,14 @@ function selectModel(model: GroupedModel) {
   }
 }
 
-function isSelected(value: string): boolean {
-  return currentValues.value.includes(value)
+function isSelected(model: GroupedModel): boolean {
+  return (currentValues.value as string[]).includes(makeKey(model))
 }
 
-function removeValue(val: string | number) {
+function removeValues(vals: (string | number)[]) {
   if (!props.multiple) return
-  emit("update:modelValue", currentValues.value.filter(v => v !== val) as any)
+  const set = new Set(vals)
+  emit("update:modelValue", currentValues.value.filter(v => !set.has(v)) as any)
 }
 
 function clearAll(e: Event) {
@@ -124,6 +159,7 @@ function switchGroup(g: string) {
             <span class="flex-1 min-w-0 truncate text-left">
               <span v-if="!hasValue" class="text-secondary">{{ placeholder }}</span>
               <span v-else class="text-primary font-medium">{{ currentLabels[0]?.label }}</span>
+              <span v-if="hasValue && currentLabels[0]?.group" class="text-[10px] text-secondary ml-1">({{ currentLabels[0]?.group }})</span>
             </span>
             <div class="inline-flex items-center shrink-0 ml-auto">
               <button v-if="hasValue" class="inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-black/10" @click.stop="clearAll">
@@ -134,13 +170,24 @@ function switchGroup(g: string) {
           </template>
           <template v-else>
             <div v-if="currentLabels.length > 0" class="w-full pr-5 flex flex-wrap items-start gap-1 overflow-y-auto">
-              <span v-for="l in currentLabels" :key="l.value"
-                class="inline-flex items-center gap-0.5 bg-surface-container-high pl-1.5 pr-0.5 py-px rounded text-[11px] font-medium text-primary shrink-0">
-                <span class="truncate max-w-[120px]">{{ l.label }}</span>
-                <button class="inline-flex items-center justify-center w-3 h-3 rounded-full hover:bg-black/10 shrink-0" @click.stop="removeValue(l.value)">
-                  <span class="material-symbols-outlined !text-[10px] leading-none">close</span>
-                </button>
-              </span>
+              <AxTooltip v-for="l in mergedLabels" :key="l.label" placement="top" :offset="6">
+                <template #content>
+                  <div class="text-left">
+                    <div class="font-semibold mb-0.5">{{ l.label }}</div>
+                    <div v-if="l.groups.length > 0" class="text-[10px] opacity-80">
+                      来自: {{ l.groups.join(', ') }}
+                    </div>
+                  </div>
+                </template>
+                <span
+                  class="inline-flex items-center gap-0.5 bg-surface-container-high pl-1.5 pr-0.5 py-px rounded text-[11px] font-medium text-primary shrink-0 cursor-default">
+                  <span class="truncate max-w-[120px]">{{ l.label }}</span>
+                  <span v-if="l.count > 1" class="inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-primary text-on-primary text-[9px] font-bold leading-none">{{ l.count }}</span>
+                  <button class="inline-flex items-center justify-center w-3 h-3 rounded-full hover:bg-black/10 shrink-0" @click.stop="removeValues(l.values)">
+                    <span class="material-symbols-outlined !text-[10px] leading-none">close</span>
+                  </button>
+                </span>
+              </AxTooltip>
               <div class="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center">
                 <span class="material-symbols-outlined text-secondary text-[16px] leading-none">expand_more</span>
               </div>
@@ -158,7 +205,7 @@ function switchGroup(g: string) {
 
     <template #default>
       <div>
-        <!-- 分组 Tab（概览风格：图标 + 底部指示线） -->
+        <!-- 分组 Tab -->
         <div v-if="groups.length > 1" class="flex items-center gap-0 border-b border-outline-variant px-1 pb-px shrink-0 overflow-x-auto overflow-y-hidden scrollbar-thin">
           <button v-for="g in groups" :key="g" type="button"
             class="relative flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150 cursor-pointer border-b-2 -mb-px whitespace-nowrap"
@@ -180,7 +227,7 @@ function switchGroup(g: string) {
           <div v-else class="flex flex-wrap gap-1">
             <button v-for="m in currentGroupModels" :key="m.value" type="button"
               class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-all duration-150 cursor-pointer border"
-              :class="isSelected(m.value)
+              :class="isSelected(m)
                 ? 'bg-primary text-on-primary border-primary shadow-sm'
                 : 'bg-surface-container-high text-secondary border-outline-variant hover:border-primary/40 hover:text-primary hover:bg-surface-container-highest'"
               @click="selectModel(m)">

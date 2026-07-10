@@ -38,6 +38,13 @@ const {
 
 
 const statusAppTab = ref<string>(localStorage.getItem('statusAppTab') || 'codex')
+const currentProfileId = computed(() => {
+  const matching = props.statuses[statusAppTab.value]?.matching_profiles
+  const name = props.statuses[statusAppTab.value]?.current_profile_name
+  if (!name || !matching) return ''
+  const found = matching.find((p: any) => p.name === name)
+  return found?.id || ''
+})
 watch(statusAppTab, (v) => localStorage.setItem('statusAppTab', v))
 const profileOptions = computed(() => {
   return props.profiles
@@ -105,7 +112,8 @@ async function handleClear(appType: string) {
     <!-- App Tabs -->
     <div class="flex flex-col gap-ax-md">
       <!-- Tab bar -->
-      <div class="flex items-center gap-0 overflow-x-auto overflow-y-hidden flex-nowrap border border-outline-variant rounded-lg bg-surface-container-lowest px-ax-md">
+      <div
+        class="flex items-center gap-0 overflow-x-auto overflow-y-hidden flex-nowrap border border-outline-variant rounded-lg bg-surface-container-lowest px-ax-md">
         <button v-for="app in STATUS_APPS" :key="app.id"
           class="relative flex items-center gap-ax-xs px-ax-md py-ax-sm font-label-md text-label-md whitespace-nowrap transition-all duration-150 cursor-pointer border-b-2 -mb-px"
           :class="statusAppTab === app.id
@@ -130,7 +138,8 @@ async function handleClear(appType: string) {
               <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <div>
                 <p class="font-label-md text-label-md font-semibold text-primary">已连接</p>
-                <p class="font-body-sm text-body-sm text-secondary mt-0.5">{{ statuses[statusAppTab].current_provider_name }}</p>
+                <p class="font-body-sm text-body-sm text-secondary mt-0.5">{{
+                  statuses[statusAppTab].current_provider_name }}</p>
               </div>
             </div>
             <AxButton size="lg" variant="outline" @click="handleClear(statusAppTab)">
@@ -142,23 +151,32 @@ async function handleClear(appType: string) {
           <div class="grid grid-cols-3 gap-ax-sm">
             <div class="bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
               <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">Provider</span>
-              <p class="font-label-md text-label-md text-primary mt-0.5 truncate">{{ statuses[statusAppTab].current_provider_name }}</p>
+              <p class="font-label-md text-label-md text-primary mt-0.5 truncate">{{
+                statuses[statusAppTab].current_provider_name }}</p>
             </div>
             <div class="bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
               <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">Model</span>
-              <p class="font-label-md text-label-md text-primary mt-0.5 truncate">{{ statuses[statusAppTab].live_config_status?.model || '-' }}</p>
+              <p class="font-label-md text-label-md text-primary mt-0.5 truncate">{{
+                statuses[statusAppTab].live_config_status?.model || '-' }}</p>
             </div>
             <div class="bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
               <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">Base URL</span>
-              <p class="font-label-md text-label-md text-primary mt-0.5 truncate">{{ statuses[statusAppTab].live_config_status?.base_url || '-' }}</p>
+              <p class="font-label-md text-label-md text-primary mt-0.5 truncate">{{
+                statuses[statusAppTab].live_config_status?.base_url || '-' }}</p>
             </div>
           </div>
 
           <!-- 切换 Profile -->
           <div class="mt-ax-sm bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
-            <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider block mb-ax-xs">切换 Profile</span>
-            <AxSelect :options="profileOptions" :placeholder="`选择 Profile 替换当前连接`" size="lg"
-              trigger-max-width="100%" @update:model-value="(v: string) => handleApplyProfile(v)" />
+            <div class="flex items-center justify-between mb-ax-xs">
+              <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">切换 Profile</span>
+              <!-- <span v-if="statuses[statusAppTab]?.current_profile_name" class="font-label-md text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-md px-ax-sm py-0 whitespace-nowrap">
+                <span class="material-symbols-outlined text-[12px] align-middle">check_circle</span>
+                当前：{{ statuses[statusAppTab].current_profile_name }}
+              </span> -->
+            </div>
+            <AxSelect :model-value="currentProfileId" :options="profileOptions" :placeholder="`选择 Profile 替换当前连接`"
+              size="lg" trigger-max-width="100%" @update:model-value="(v: string) => handleApplyProfile(v)" />
           </div>
         </template>
 
@@ -176,7 +194,8 @@ async function handleClear(appType: string) {
         </template>
 
         <!-- 虚拟账号（仅 Codex） -->
-        <div v-if="statusAppTab === 'codex'" class="mt-ax-sm bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
+        <div v-if="statusAppTab === 'codex'"
+          class="mt-ax-sm bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-ax-sm">
               <span class="material-symbols-outlined text-[16px] text-primary">account_circle</span>
@@ -185,12 +204,8 @@ async function handleClear(appType: string) {
                 <p class="font-body-sm text-[11px] text-secondary mt-0.5">管理 Codex 登录身份与路由配置</p>
               </div>
             </div>
-            <AxSwitch
-            :model-value="virtualAccountEnabled"
-            :disabled="virtualAccountLoading"
-            size="md"
-            @update:model-value="handleToggleVirtualAccount"
-          />
+            <AxSwitch :model-value="virtualAccountEnabled" :disabled="virtualAccountLoading" size="md"
+              @update:model-value="handleToggleVirtualAccount" />
           </div>
         </div>
 
@@ -206,17 +221,11 @@ async function handleClear(appType: string) {
           </button>
 
           <div v-if="expandedAppConfig === statusAppTab">
-            <LocalConfigViewer
-              :config-data="appConfigs[statusAppTab]"
-              :loading="loadingAppConfig"
-              label="全局配置目录"
-              :expanded-files="expandedAppFiles"
-              :file-key-prefix="statusAppTab"
-              @toggle:file="(key: string) => {
+            <LocalConfigViewer :config-data="appConfigs[statusAppTab]" :loading="loadingAppConfig" label="全局配置目录"
+              :expanded-files="expandedAppFiles" :file-key-prefix="statusAppTab" @toggle:file="(key: string) => {
                 const parts = key.split('-')
                 toggleAppFileExpand(parts[0], Number(parts[1]))
-              }"
-            />
+              }" />
           </div>
         </div>
       </div>

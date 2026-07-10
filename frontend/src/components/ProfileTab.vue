@@ -30,7 +30,7 @@ async function loadAllProviderModels() {
       const models: Array<{ value: string; label: string; group: string }> = []
       for (const p of res.data.providers) {
         for (const m of p.models) {
-          if (!models.some(existing => existing.value === m.id)) {
+          if (!models.some(existing => existing.value === m.id && existing.group === p.name)) {
             models.push({ value: m.id, label: m.displayName || m.id, group: p.name })
           }
         }
@@ -136,7 +136,12 @@ async function openEditDialog(profile: Profile) {
             claudeHaiku: t.claude_haiku || '',
             claudeSonnet: t.claude_sonnet || '',
             claudeOpus: t.claude_opus || '',
-            codexModels: Array.isArray(t.codex_models) ? t.codex_models : [],
+            codexModels: Array.isArray(t.codex_models)
+              ? t.codex_models.map((m: string) => {
+                  const found = allProviderModels.value.find(o => o.value === m)
+                  return found ? found.group + "::" + m : m
+                })
+              : [],
           }
         }
       }
@@ -154,7 +159,7 @@ async function handleSave() {
     const cfg = platformConfigs.value[p.id]
     const t: ProfileTargetData = { app_type: p.id, model: cfg.model }
     if (p.id === 'claude') { t.claude_haiku = cfg.claudeHaiku; t.claude_sonnet = cfg.claudeSonnet; t.claude_opus = cfg.claudeOpus }
-    if (p.id === 'codex') { t.codex_models = cfg.codexModels }
+    if (p.id === 'codex') { t.codex_models = cfg.codexModels.map((m: string) => { const s = m.indexOf("::"); return s > 0 ? m.slice(s + 2) : m }) }
     targets.push(t)
   }
   if (targets.length === 0) return

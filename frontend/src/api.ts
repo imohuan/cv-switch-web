@@ -54,11 +54,13 @@ export interface AppStatus {
   app_type: string
   current_provider_id: string | null
   current_provider_name: string | null
+  virtual_account_enabled?: boolean
   live_config_status: {
     configured: boolean
     model?: string
     base_url?: string
   }
+  current_profile_name: string | null
   updated_at: string
 }
 

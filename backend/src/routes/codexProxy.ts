@@ -597,4 +597,19 @@ function nowSec() { return Math.floor(Date.now() / 1000); }
 
 
 
+
+// DEBUG: 捕获所有未匹配的 /proxy 请求
+router.all('*', (req: Request, res: Response) => {
+  logger.codexProxy.error('未匹配的代理请求', {
+    method: req.method,
+    path: req.path,
+    baseUrl: (req as any).baseUrl,
+    originalUrl: (req as any).originalUrl,
+    auth: req.headers.authorization ? req.headers.authorization.slice(0, 80) + '...' : 'none',
+    contentType: req.headers['content-type'] || 'none',
+    bodyKeys: req.body ? Object.keys(req.body).join(',') : 'none',
+  });
+  res.status(404).json({ error: { message: 'Proxy route not found: ' + req.method + ' ' + req.path } });
+});
+
 export default router;

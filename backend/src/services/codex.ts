@@ -27,7 +27,7 @@ function providerSlug(p: db.Provider): string {
  * - model_catalog 聚合所有 Provider 的模型
  * - 虚拟账号控制路由 provider 的 requires_openai_auth
  */
-export function writeCodexConfig(virtualAccount = false, activeProviderId?: string): { success: boolean; message: string } {
+export function writeCodexConfig(virtualAccount = false, activeProviderId?: string, codexModelsList?: string[]): { success: boolean; message: string } {
   try {
     if (!fs.existsSync(CODEX_DIR)) {
       fs.mkdirSync(CODEX_DIR, { recursive: true });
@@ -41,27 +41,54 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
       const name = 'NIUNIU WOYAO';
       const userId = 'user-niuniu-woyao-pro-unlock';
 
-      const fakeJwtHeader = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-      function makeFakeJwt(e: string, n: string, uid: string) {
-        const payload = Buffer.from(JSON.stringify({
-          email: e, name: n, user_id: uid, plan_type: 'free',
-          iat: Math.floor(Date.now() / 1000),
-          exp: Math.floor(Date.now() / 1000) + 365 * 24 * 3600,
-        })).toString('base64url');
-        const sig = Buffer.from('cv-switch-web-virtual-signature').toString('base64url');
-        return fakeJwtHeader + '.' + payload + '.' + sig;
-      }
+      // JWT 结构完全模仿 AiMaMi：包含 https://api.openai.com/auth 和 https://api.openai.com/profile
+      const now = Math.floor(Date.now() / 1000);
+      const fakeJwtHeader = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
 
-      const accessToken = makeFakeJwt(email, name, userId);
-      const idToken = makeFakeJwt(email, name, userId);
+      const accessPayload = Buffer.from(JSON.stringify({
+        aud: 'cv-switch-router-unlock',
+        exp: now + 365 * 24 * 3600,
+        'https://api.openai.com/auth': {
+          chatgpt_account_id: '00000000-0000-4000-8000-000000000001',
+          chatgpt_account_user_id: userId,
+          chatgpt_plan_type: 'free',
+          chatgpt_user_id: userId,
+          user_id: userId,
+        },
+        'https://api.openai.com/profile': {
+          email,
+          name,
+        },
+        iat: now,
+        iss: 'https://auth.openai.com',
+        sub: userId,
+      })).toString('base64url');
+
+      const idPayload = Buffer.from(JSON.stringify({
+        aud: 'cv-switch-router-unlock',
+        email,
+        exp: now + 365 * 24 * 3600,
+        'https://api.openai.com/auth': {
+          chatgpt_account_id: '00000000-0000-4000-8000-000000000001',
+          chatgpt_account_user_id: userId,
+          chatgpt_plan_type: 'free',
+          chatgpt_user_id: userId,
+          user_id: userId,
+        },
+        iat: now,
+        iss: 'https://auth.openai.com',
+        name,
+        sub: userId,
+      })).toString('base64url');
+
+      const accessToken = fakeJwtHeader + '.' + accessPayload + '.cv-switch-web-virtual-signature';
+      const idToken = fakeJwtHeader + '.' + idPayload + '.cv-switch-web-virtual-signature';
 
       const auth = {
         aimami_router_unlock_auth: true,
         auth_mode: 'chatgpt',
         axonhub_note: 'cv-switch-web virtual account. Not a real OpenAI account.',
-        email,
-        name,
-        user_id: userId,
+        last_refresh: new Date().toISOString(),
         tokens: {
           access_token: accessToken,
           id_token: idToken,
@@ -121,8 +148,35 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
       }
     }
 
-    // 为每个 Provider 注册直连 provider + profile
-    for (const provider of allProviders) {
+    // 确定哪些 Provider 需要注册
+    // 如果传了 codexModelsList（来自 profile），只注册包含这些模型的 provider
+    // 否则注册所有 provider（fallback）
+    let activeProviders: db.Provider[];
+    let modelCatalog: ReturnType<typeof generateAggregatedModelCatalog>;
+
+    if (codexModelsList && codexModelsList.length > 0) {
+      // 根据 profile 选中的模型名，找到对应的 provider
+      const providerSet = new Map<string, db.Provider>();
+      for (const provider of allProviders) {
+        const { models } = codexModels(provider);
+        for (const m of models) {
+          if (codexModelsList.includes(m.model)) {
+            providerSet.set(provider.id, provider);
+            break; // 这个 provider 匹配了，不需要继续检查它的其他模型
+          }
+        }
+      }
+      activeProviders = Array.from(providerSet.values());
+
+      // 生成只包含选中模型的 catalog
+      modelCatalog = generateAggregatedModelCatalog(allProviders, codexModelsList);
+    } else {
+      activeProviders = allProviders;
+      modelCatalog = generateAggregatedModelCatalog(allProviders);
+    }
+
+    // 为每个活跃 Provider 注册直连 provider + profile
+    for (const provider of activeProviders) {
       const format = bestFormatForApp(provider, 'codex');
       const useProxy = format === 'openai_chat';
       const baseUrl = useProxy
@@ -158,29 +212,29 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
       supports_websockets: false,
     };
 
+    const firstActive = activeProviders[0];
     configToml.profiles[ROUTER_PROVIDER_ID] = {
       model_provider: ROUTER_PROVIDER_ID,
-      model: allProviders[0] ? (providerSlug(allProviders[0]) + '::' + (codexModels(allProviders[0]).defaultModel)) : 'unknown',
+      model: firstActive ? (providerSlug(firstActive) + '::' + (codexModels(firstActive).defaultModel)) : 'unknown',
     };
 
-    const providerIds = allProviders.map(p => providerSlug(p)).join(', ');
+    const providerIds = activeProviders.map(p => providerSlug(p)).join(', ');
     writeTrackedConfigFile(CODEX_CONFIG_PATH, stringifyToml(configToml), {
       model_provider: ROUTER_PROVIDER_ID,
       providers: providerIds || 'none',
       virtual_account: virtualAccount ? 'true' : 'false',
     });
 
-    // 3. Write model catalog（聚合所有 Provider 模型）
-    const catalog = generateAggregatedModelCatalog(allProviders);
+    // 3. Write model catalog
     writeTrackedConfigFile(
       CODEX_MODEL_CATALOG_PATH,
-      JSON.stringify(catalog, null, 2),
-      { model_catalog: 'aggregated', model_count: String(catalog.models.length) },
+      JSON.stringify(modelCatalog, null, 2),
+      { model_catalog: 'aggregated', model_count: String(modelCatalog.models.length) },
     );
 
     return {
       success: true,
-      message: `Codex config written: router=${ROUTER_PROVIDER_ID}, providers=[${providerIds}], models=${catalog.models.length}`,
+      message: `Codex config written: router=${ROUTER_PROVIDER_ID}, providers=[${providerIds}], models=${modelCatalog.models.length}`,
     };
   } catch (err: any) {
     return { success: false, message: `Failed to write Codex config: ${err.message}` };

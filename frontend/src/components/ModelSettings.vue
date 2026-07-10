@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue"
 import { api } from "../api"
-import { AxButton } from "./ui"
+import { AxButton, AxInput } from "./ui"
 
 const props = withDefaults(
   defineProps<{
@@ -34,6 +34,7 @@ const emit = defineEmits<{
 const models = ref<Array<{ value: string; label: string }>>([])
 const fetching = ref(false)
 const fetchError = ref("")
+const searchQuery = ref("")
 
 // 内部选中集合（Set 保证唯一）
 const selectedSet = computed<Set<string>>(() => {
@@ -43,9 +44,45 @@ const selectedSet = computed<Set<string>>(() => {
   return new Set(raw.filter(Boolean))
 })
 
+// 搜索过滤后的模型列表
+const filteredModels = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return models.value
+  return models.value.filter(m => m.value.toLowerCase().includes(q) || m.label.toLowerCase().includes(q))
+})
+
+// ---- 自定义模型添加（搜索时回车） ----
+function addSearchAsModel() {
+  const name = searchQuery.value.trim()
+  if (!name) return
+  // 已存在则不重复添加
+  if (models.value.some(m => m.value === name)) {
+    searchQuery.value = ""
+    return
+  }
+  // 添加到模型列表末尾
+  models.value = [...models.value, { value: name, label: name }]
+  // 自动选中
+  if (props.multiple) {
+    const next = new Set(selectedSet.value)
+    next.add(name)
+    emit("update:modelValue", [...next] as string[])
+  } else {
+    emit("update:modelValue", name)
+  }
+  searchQuery.value = ""
+}
+
+function onSearchKeydown(e: KeyboardEvent) {
+  if (e.key === "Enter" && filteredModels.value.length === 0) {
+    e.preventDefault()
+    addSearchAsModel()
+  }
+}
+
 // ---- 计算属性 ----
 const allSelected = computed(() =>
-  models.value.length > 0 && models.value.every(m => selectedSet.value.has(m.value))
+  filteredModels.value.length > 0 && filteredModels.value.every(m => selectedSet.value.has(m.value))
 )
 
 const someSelected = computed(() =>
@@ -148,6 +185,8 @@ function handleTagClick(modelValue: string, index: number, event: MouseEvent) {
 // ---- 键盘快捷键 ----
 function onKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+    const tag = (e.target as HTMLElement)?.tagName
+    if (tag === "INPUT" || tag === "TEXTAREA") return // 不拦截输入框内的 Ctrl+A
     e.preventDefault()
     if (props.multiple) selectAll()
   }
@@ -186,6 +225,27 @@ defineExpose({ fetchModels })
         </span>
       </div>
       <div class="flex items-center gap-ax-xs">
+        <!-- 搜索框 -->
+        <div class="relative w-[180px]">
+          <AxInput
+            v-model="searchQuery"
+            placeholder="搜索模型..."
+            size="sm"
+            @keydown="onSearchKeydown"
+          >
+            <template #prefix>
+              <span class="material-symbols-outlined text-[14px]">search</span>
+            </template>
+          </AxInput>
+          <button
+            v-if="searchQuery"
+            type="button"
+            class="absolute right-1.5 top-1/2 -translate-y-1/2 text-secondary hover:text-primary cursor-pointer z-10"
+            @click="searchQuery = ''"
+          >
+            <span class="material-symbols-outlined text-[14px]">close</span>
+          </button>
+        </div>
         <AxButton
           size="sm"
           variant="outline"
@@ -221,11 +281,11 @@ defineExpose({ fetchModels })
     </div>
 
     <!-- 模型标签区域 -->
-    <div v-if="models.length > 0"
+    <div v-if="filteredModels.length > 0"
       class="flex flex-wrap gap-ax-xs max-h-[240px] overflow-y-auto scrollbar-thin py-ax-xs"
       :class="multiple ? 'select-none' : ''">
       <button
-        v-for="(model, idx) in models"
+        v-for="(model, idx) in filteredModels"
         :key="model.value"
         type="button"
         class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-all duration-150 cursor-pointer border"
@@ -237,6 +297,14 @@ defineExpose({ fetchModels })
       >
         <span class="truncate max-w-[200px]">{{ model.label }}</span>
       </button>
+    </div>
+
+    <!-- 搜索无结果 -->
+    <div v-else-if="searchQuery && models.length > 0"
+      class="flex flex-col items-center justify-center py-4 text-secondary gap-1">
+      <span class="material-symbols-outlined text-[24px] opacity-40">search_off</span>
+      <span class="font-body-sm text-[12px]">未找到 "{{ searchQuery }}" 相关模型</span>
+      <span class="font-body-sm text-[11px] text-outline">按 Enter 添加为自定义模型</span>
     </div>
 
     <!-- 底部提示 -->
