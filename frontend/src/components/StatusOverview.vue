@@ -54,6 +54,25 @@ const profileOptions = computed(() => {
 })
 const workBuddyReadable = ref(false)
 const virtualAccountEnabled = ref(false)
+const virtualAccountLoading = ref(false)
+
+async function handleToggleVirtualAccount(enabled: boolean) {
+  virtualAccountLoading.value = true
+  try {
+    const res = await api.toggleVirtualAccount(enabled)
+    if (res.success) {
+      virtualAccountEnabled.value = enabled
+      triggerNotify(res.message || (enabled ? '虚拟账号已启用' : '虚拟账号已禁用'), 'success')
+      emit('refresh')
+    } else {
+      triggerNotify(res.error || '操作失败', 'error')
+    }
+  } catch (e: any) {
+    triggerNotify(e.message || '操作失败', 'error')
+  } finally {
+    virtualAccountLoading.value = false
+  }
+}
 
 async function handleSwitch(appType: string, providerId: string) {
   const res = await api.switchProvider(appType, providerId)
@@ -164,7 +183,12 @@ async function handleClear(appType: string) {
                 <p class="font-body-sm text-[11px] text-secondary mt-0.5">管理 Codex 登录身份与路由配置</p>
               </div>
             </div>
-            <AxSwitch v-model="virtualAccountEnabled" size="md" />
+            <AxSwitch
+            :model-value="virtualAccountEnabled"
+            :disabled="virtualAccountLoading"
+            size="md"
+            @update:model-value="handleToggleVirtualAccount"
+          />
           </div>
         </div>
 
