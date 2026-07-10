@@ -635,6 +635,25 @@ router.post('/switch/:appType/clear', (req: Request, res: Response) => {
       return;
     }
     db.setCurrentProvider(appType, null);
+    // 清理实际配置文件
+    switch (appType) {
+      case "codex":
+        // 重新写 config.toml（所有 provider 仍在，但当前激活的为空）
+        const codexStatus = db.getAppStatus('codex');
+        const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
+        writeCodexConfig(virtualAccount);
+        break;
+      case "claude":
+        // Claude：清空 settings.json 中的 apiKey 相关配置
+        writeClaudeConfig({ id: '', name: '', base_url: '', api_key: '', model: '', api_format: 'anthropic', extra_config: '{}', sort_index: 0, created_at: '', updated_at: '' } as any);
+        break;
+      case "gemini":
+        writeGeminiConfig({ id: '', name: '', base_url: '', api_key: '', model: '', api_format: 'openai_chat', extra_config: '{}', sort_index: 0, created_at: '', updated_at: '' } as any);
+        break;
+      case "opencode":
+        writeOpenCodeConfig({ id: '', name: '', base_url: '', api_key: '', model: '', api_format: 'openai_chat', extra_config: '{}', sort_index: 0, created_at: '', updated_at: '' } as any);
+        break;
+    }
     res.json({ success: true, message: `Cleared ${appType} config` });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
