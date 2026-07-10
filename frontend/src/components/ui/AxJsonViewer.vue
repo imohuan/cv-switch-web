@@ -7,6 +7,7 @@
  */
 import { ref, computed, watch } from 'vue';
 import { useLinkify } from './hooks/useLinkify';
+import type { JsonPathSegment } from '../../api';
 
 const { linkify } = useLinkify();
 
@@ -32,6 +33,12 @@ const props = withDefaults(
      *   N = 只展开前 N 层（depth < N 的节点可见）
      */
     expandLevel?: number;
+    /** 本系统最近一次写入时发生变化的 JSON 路径 */
+    changedPaths?: JsonPathSegment[][];
+    /** 写入时设置的键值对，根节点根据 value 匹配 JSON 叶子节点自动推导 changedPaths */
+    changedValues?: Record<string, string>;
+    /** 当前递归节点路径 */
+    path?: JsonPathSegment[];
   }>(),
   {
     nodeKey: null,
@@ -43,8 +50,80 @@ const props = withDefaults(
     defaultExpandAll: false,
     depth: 0,
     expandLevel: 0,
+    changedPaths: () => [],
+    changedValues: () => ({}),
+    path: () => [],
   },
 );
+
+function samePath(left: JsonPathSegment[], right: JsonPathSegment[]): boolean {
+  return left.length === right.length && left.every((segment, index) => segment === right[index]);
+}
+
+function isPathPrefix(prefix: JsonPathSegment[], target: JsonPathSegment[]): boolean {
+  return prefix.length <= target.length && prefix.every((segment, index) => segment === target[index]);
+}
+
+const parsedData = computed(() => {
+  if (typeof props.data === 'string') {
+    const trimmed = props.data.trim();
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try { return JSON.parse(trimmed); } catch { /* ignore */ }
+    }
+  }
+  return props.data;
+});
+
+/** 根节点根据 changedValues 自动推导哪些 JSON 叶子节点被改了 */
+const derivedPaths = computed(() => {
+  if (!props.isRoot) return props.changedPaths;
+  if (!props.changedValues || Object.keys(props.changedValues).length === 0) return [];
+
+  const values = new Set(Object.values(props.changedValues).filter(Boolean));
+  if (values.size === 0) return [];
+
+  const result: JsonPathSegment[][] = [];
+
+  function walk(obj: unknown, currentPath: JsonPathSegment[]) {
+    if (obj === null || obj === undefined) return;
+    if (typeof obj === 'string') {
+      if (values.has(obj)) result.push([...currentPath]);
+      return;
+    }
+    if (typeof obj === 'number') {
+      if (values.has(String(obj))) result.push([...currentPath]);
+      return;
+    }
+    if (typeof obj === 'boolean') {
+      if (values.has(String(obj))) result.push([...currentPath]);
+      return;
+    }
+    if (Array.isArray(obj)) {
+      for (let i = 0; i < obj.length; i++) {
+        walk(obj[i], [...currentPath, i]);
+      }
+      return;
+    }
+    if (typeof obj === 'object') {
+      for (const [key, val] of Object.entries(obj as Record<string, unknown>)) {
+        walk(val, [...currentPath, key]);
+      }
+    }
+  }
+
+  console.log("[AxJsonViewer] changedValues:", props.changedValues);
+  console.log("[AxJsonViewer] values to match:", [...values]);
+  walk(parsedData.value, []);
+  console.log("[AxJsonViewer] derivedPaths result:", result.map(p => p.join(".")));
+  return result;
+});
+
+const effectiveChangedPaths = computed(() =>
+  props.isRoot ? derivedPaths.value : props.changedPaths,
+);
+
+const isChanged = computed(() => effectiveChangedPaths.value.some((changedPath) => samePath(changedPath, props.path)));
+const containsChanges = computed(() => effectiveChangedPaths.value.some((changedPath) => isPathPrefix(props.path, changedPath)));
 
 const isExpanded = ref(props.isRoot || props.expandTrigger > 0 || props.defaultExpandAll);
 // 向下传递的递归触发器：Ctrl+点击时生成，逐层透传
@@ -136,16 +215,6 @@ function handleToggle(e: MouseEvent) {
   }
 }
 
-const parsedData = computed(() => {
-  if (typeof props.data === 'string') {
-    const trimmed = props.data.trim();
-    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-      try { return JSON.parse(trimmed); } catch { /* ignore */ }
-    }
-  }
-  return props.data;
-});
-
 const dataType = computed(() => {
   const val = parsedData.value;
   if (val === null) return 'null';
@@ -200,7 +269,11 @@ watch(
 <template>
   <div class="json-viewer select-text font-mono text-xs leading-normal" :class="{ 'overflow-x-auto': !props.wrapEnabled && props.isRoot }">
     <!-- 简单值（非对象/数组） -->
-    <div v-if="!isComplex" class="group flex items-start rounded-sm transition-colors hover:bg-surface-container-low/50">
+    <div
+      v-if="!isComplex"
+      class="group flex items-start transition-colors"
+      :class="isChanged ? 'bg-green-100/80 shadow-[inset_3px_0_0_#22c55e]' : 'hover:bg-surface-container-low/50'"
+    >
       <div class="w-4 shrink-0" />
       <div class="flex-1" :class="props.wrapEnabled ? 'min-w-0' : 'min-w-max'">
         <span v-if="nodeKey !== null" class="mr-ax-xs cursor-text text-primary shrink-0">
@@ -215,8 +288,11 @@ watch(
     <!-- 对象 / 数组 -->
     <div v-else class="group/tree relative">
       <div
-        class="flex items-start rounded-sm transition-colors cursor-pointer"
-        :class="{ 'hover:bg-surface-container-low/50': !isRoot }"
+        class="flex items-start transition-colors cursor-pointer"
+        :class="[
+          { 'hover:bg-surface-container-low/50': !isRoot && !isChanged },
+          isChanged ? 'bg-green-100/80 shadow-[inset_3px_0_0_#22c55e]' : '',
+        ]"
         @click="handleToggle"
       >
         <!-- 折叠箭头 -->
@@ -232,6 +308,7 @@ watch(
             <span class="text-outline">'</span>{{ nodeKey }}<span class="text-outline">'</span
             ><span class="text-outline">:</span>
           </span>
+          <span v-if="containsChanges && !isChanged" class="mr-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" title="包含本次改动" />
           <span class="text-outline">{{ openBracket }}</span>
           <template v-if="!isExpanded && !isEmpty">
             <span v-if="dataType === 'array'" class="mx-0.5 text-xs tracking-widest text-outline">...</span>
@@ -263,12 +340,14 @@ watch(
             :default-expand-all="props.defaultExpandAll"
             :is-root="false"
             :wrap-enabled="props.wrapEnabled"
+            :changed-paths="effectiveChangedPaths"
+            :path="[...props.path, dataType === 'array' ? Number(key) : String(key)]"
           />
         </div>
       </div>
 
       <!-- 闭合括号 -->
-      <div v-show="isExpanded && !isEmpty" class="rounded-sm group-hover/tree:bg-surface-container-low/30">
+      <div v-show="isExpanded && !isEmpty" class="group-hover/tree:bg-surface-container-low/30">
         <div class="text-outline pl-[7px]">{{ closeBracket }}<span v-if="!isLast">,</span></div>
       </div>
     </div>
