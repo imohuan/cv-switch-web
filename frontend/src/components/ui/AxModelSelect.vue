@@ -167,9 +167,9 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
 <template>
   <AxDropdown v-model="open" placement="bottom-start" :offset="4" menu-width="200px" menu-max-width="320px" body-class="p-1 max-h-56 overflow-y-auto scrollbar-thin">
     <template #trigger="{ open: isOpen, toggle }">
-      <div class="relative w-full">
+      <div class="w-full">
         <div :class="[
-          'w-full bg-surface-container-low transition-colors text-left border rounded-md flex gap-1',
+          'relative w-full bg-surface-container-low transition-colors text-left border rounded-md flex gap-1',
           multiple ? 'flex-col items-start h-[140px] overflow-hidden' : 'flex-nowrap items-center',
           isOpen ? 'ring-1 ring-primary border-primary' : 'border-outline-variant hover:bg-surface-container cursor-pointer',
           multiple ? MULTI_SIZE_CLASSES[size] : SIZE_CLASSES[size],
@@ -179,7 +179,7 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
           <template v-if="!isOpen">
             <!-- Multi-select: chips area (flex-1 scroll) + bottom bar -->
             <template v-if="multiple">
-              <div v-if="currentLabels.length > 0" class="flex-1 w-full flex flex-wrap items-start gap-1 overflow-y-auto">
+              <div v-if="currentLabels.length > 0" class="w-full pr-5 flex flex-wrap items-start gap-1 overflow-y-auto">
                 <span v-for="l in currentLabels" :key="l.value"
                   class="inline-flex items-center gap-0.5 bg-surface-container-high pl-1.5 pr-0.5 py-px rounded text-[11px] font-medium text-primary shrink-0">
                   <span class="truncate max-w-[120px]">{{ l.label }}</span>
@@ -191,7 +191,7 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
               <div v-else class="flex-1 w-full flex items-center">
                 <span class="text-secondary text-[11px]">{{ placeholder }}</span>
               </div>
-              <div class="w-full flex items-center justify-end shrink-0">
+              <div class="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center">
                 <span class="material-symbols-outlined text-secondary text-[16px] leading-none">expand_more</span>
               </div>
             </template>
