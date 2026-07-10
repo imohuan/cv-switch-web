@@ -24,7 +24,7 @@ const CODEX_MODEL_PROVIDER_ID = 'custom';
  *    "Missing environment variable: OPENAI_API_KEY"。
  *    改用 api_key 直接写入 config.toml，Codex 从文件读取。
  */
-export function writeCodexConfig(provider: Provider): { success: boolean; message: string } {
+export function writeCodexConfig(provider: Provider, virtualAccount = false): { success: boolean; message: string } {
   try {
     if (!fs.existsSync(CODEX_DIR)) {
       fs.mkdirSync(CODEX_DIR, { recursive: true });
@@ -41,17 +41,58 @@ export function writeCodexConfig(provider: Provider): { success: boolean; messag
     // 直连模式写 Provider 真实 key。
     const apiKey = useProxy ? 'PROXY_MANAGED' : provider.api_key;
 
-    // 1. Write auth.json（保留已有 key，兼容旧版 Codex）
-    const auth: Record<string, string> = {};
-    if (fs.existsSync(CODEX_AUTH_PATH)) {
-      try {
-        const existing = JSON.parse(fs.readFileSync(CODEX_AUTH_PATH, 'utf-8'));
-        Object.assign(auth, existing);
-      } catch { /* ignore parse errors */ }
-    }
-    auth['OPENAI_API_KEY'] = apiKey;
+        // 1. Write auth.json
+    if (virtualAccount) {
+      // 虚拟账号模式：写完整假 JWT
+      const email = 'niuniu@woyao.pro';
+      const name = 'NIUNIU WOYAO';
+      const userId = 'user-niuniu-woyao-pro-unlock';
 
-    writeTrackedConfigFile(CODEX_AUTH_PATH, JSON.stringify(auth, null, 2), { api_key: apiKey });
+      const fakeJwtHeader = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+      function makeFakeJwt(e: string, n: string, uid: string) {
+        const payload = Buffer.from(JSON.stringify({
+          email: e, name: n, user_id: uid, plan_type: 'free',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 365 * 24 * 3600,
+        })).toString('base64url');
+        const sig = Buffer.from('cv-switch-web-virtual-signature').toString('base64url');
+        return fakeJwtHeader + '.' + payload + '.' + sig;
+      }
+
+      const accessToken = makeFakeJwt(email, name, userId);
+      const idToken = makeFakeJwt(email, name, userId);
+
+      const auth = {
+        aimami_router_unlock_auth: true,
+        auth_mode: 'chatgpt',
+        axonhub_note: 'cv-switch-web virtual account. Not a real OpenAI account.',
+        email,
+        name,
+        user_id: userId,
+        tokens: {
+          access_token: accessToken,
+          id_token: idToken,
+          refresh_token: 'cv-switch-web-refresh-token',
+        },
+        OPENAI_API_KEY: 'PROXY_MANAGED',
+      };
+
+      writeTrackedConfigFile(CODEX_AUTH_PATH, JSON.stringify(auth, null, 2), { api_key: 'PROXY_MANAGED', virtual: 'true' });
+    } else {
+      // 普通模式
+      const auth: Record<string, string> = {};
+      if (fs.existsSync(CODEX_AUTH_PATH)) {
+        try {
+          const existing = JSON.parse(fs.readFileSync(CODEX_AUTH_PATH, 'utf-8'));
+          // 如果当前是虚拟账号，不保留旧字段
+          if (!existing.aimami_router_unlock_auth) {
+            Object.assign(auth, existing);
+          }
+        } catch { /* ignore */ }
+      }
+      auth['OPENAI_API_KEY'] = apiKey;
+      writeTrackedConfigFile(CODEX_AUTH_PATH, JSON.stringify(auth, null, 2), { api_key: apiKey });
+    }
 
     // 2. Write config.toml（读取已有配置，只覆盖我们管理的字段）
     let configToml: Record<string, any> = {};
