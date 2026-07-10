@@ -1,4 +1,4 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import * as db from '../db.js';
@@ -154,7 +154,7 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
       base_url: routerBaseUrl,
       api_key: 'PROXY_MANAGED',
       wire_api: 'responses',
-      requires_openai_auth: false,
+      requires_openai_auth: true,
       supports_websockets: false,
     };
 

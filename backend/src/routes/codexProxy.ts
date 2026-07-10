@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import * as db from '../db.js';
 import { codexModels } from '../services/providerConfig.js';
 import { logger } from '../services/logger.js';
@@ -54,6 +54,8 @@ function verifyVirtualAccountAuth(req: Request): { ok: boolean; message?: string
 // 智能路由层：根据请求中的 model slug（格式 {providerId}::{modelName}）选择上游 Provider
 
 router.post('/codex/router/v1/responses', async (req: Request, res: Response) => {
+  // DEBUG: log request headers
+  logger.codexProxy.request('router', JSON.stringify({ auth: req.headers.authorization ? 'present' : 'none', model: req.body?.model, contentType: req.headers['content-type'] }));
   // JWT 验证（虚拟账号模式下必须）
   const auth = verifyVirtualAccountAuth(req);
   if (!auth.ok) {
