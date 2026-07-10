@@ -287,6 +287,14 @@ function responsesToChat(body: any, provider: db.Provider): Record<string, JsonV
     if (body.parallel_tool_calls !== undefined) result.parallel_tool_calls = body.parallel_tool_calls;
   }
   if (result.stream) result.stream_options = mergeIncludeUsage(body.stream_options);
+  // developer 是GPT最新的规范 很多模型都不支持 除了 gpt 家族
+  if (result?.model && !(result.model as string)?.startsWith("gpt-")) {
+    result.messages = (result.messages as any[]).map((m) => {
+      const role = m?.role
+      if (role === "developer") m.role = "system"
+      return m
+    })
+  }
   return result;
 }
 
