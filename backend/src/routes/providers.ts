@@ -437,10 +437,23 @@ router.post('/profiles/:id/apply', (req: Request, res: Response) => {
         const result = writeProfileConfig(tempProfile, effectiveProvider);
         if (result.success) {
           db.setCurrentProvider(target.app_type, matchedProvider.id)
-          if (target.app_type === "codex") {
-            const codexStatus = db.getAppStatus("codex");
-            const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
-            writeCodexConfig(virtualAccount, matchedProvider.id);
+          // 更新全局配置文件（各平台实时生效）
+          switch (target.app_type) {
+            case "codex": {
+              const codexStatus = db.getAppStatus("codex");
+              const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
+              writeCodexConfig(virtualAccount, matchedProvider.id);
+              break;
+            }
+            case "claude":
+              writeClaudeConfig(matchedProvider);
+              break;
+            case "gemini":
+              writeGeminiConfig(matchedProvider);
+              break;
+            case "opencode":
+              writeOpenCodeConfig(matchedProvider);
+              break;
           }
         }
         results.push({ app_type: target.app_type, success: result.success, message: result.message })
@@ -458,11 +471,26 @@ router.post('/profiles/:id/apply', (req: Request, res: Response) => {
     }
 
     const result = writeProfileConfig(profile, provider);
-    if (result.success && profile.app_type === "codex") {
+    if (result.success) {
       db.setCurrentProvider(profile.app_type, provider.id);
-      const codexStatus = db.getAppStatus("codex");
-      const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
-      writeCodexConfig(virtualAccount, provider.id);
+      // 更新全局配置文件
+      switch (profile.app_type) {
+        case "codex": {
+          const codexStatus = db.getAppStatus("codex");
+          const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
+          writeCodexConfig(virtualAccount, provider.id);
+          break;
+        }
+        case "claude":
+          writeClaudeConfig(provider);
+          break;
+        case "gemini":
+          writeGeminiConfig(provider);
+          break;
+        case "opencode":
+          writeOpenCodeConfig(provider);
+          break;
+      }
     }
     res.json({
       success: result.success,
