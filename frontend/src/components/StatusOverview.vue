@@ -57,17 +57,21 @@ const virtualAccountEnabled = ref(false)
 const virtualAccountLoading = ref(false)
 
 async function handleToggleVirtualAccount(enabled: boolean) {
+  // 乐观更新：先改 UI，再调 API
+  virtualAccountEnabled.value = enabled
   virtualAccountLoading.value = true
   try {
     const res = await api.toggleVirtualAccount(enabled)
     if (res.success) {
-      virtualAccountEnabled.value = enabled
       triggerNotify(res.message || (enabled ? '虚拟账号已启用' : '虚拟账号已禁用'), 'success')
-      emit('refresh')
     } else {
+      // API 失败，回滚 UI
+      virtualAccountEnabled.value = !enabled
       triggerNotify(res.error || '操作失败', 'error')
     }
   } catch (e: any) {
+    // 网络错误，回滚 UI
+    virtualAccountEnabled.value = !enabled
     triggerNotify(e.message || '操作失败', 'error')
   } finally {
     virtualAccountLoading.value = false
