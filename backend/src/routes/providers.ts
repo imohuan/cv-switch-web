@@ -602,7 +602,8 @@ router.get('/status', (_req: Request, res: Response) => {
         app_type: s.app_type,
         current_provider_id: s.current_provider_id,
         current_provider_name: provider?.name || null,
-                live_config_status: configStatus,
+        virtual_account_enabled: s.virtual_account_enabled ?? false,
+        live_config_status: configStatus,
         matching_profiles: matchingProfiles,
         updated_at: s.updated_at,
       };
@@ -665,7 +666,7 @@ function applyProviderToApp(appType: string, provider: db.Provider): { success: 
   const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
 
   switch (appType) {
-    case 'codex': return writeCodexConfig(virtualAccount);
+    case 'codex': return writeCodexConfig(virtualAccount, provider.id);
     case 'claude': return writeClaudeConfig(provider);
     case 'gemini': return writeGeminiConfig(provider);
     case 'opencode': return writeOpenCodeConfig(provider);
@@ -916,7 +917,7 @@ router.post('/codex/virtual-account/toggle', (req: Request, res: Response) => {
     if (updatedStatus.current_provider_id) {
       const provider = db.getProviderById(updatedStatus.current_provider_id);
       if (provider) {
-        const result = writeCodexConfig(enabled);
+        const result = writeCodexConfig(enabled, updatedStatus.current_provider_id || undefined);
         res.json({
           success: result.success,
           message: enabled ? '虚拟账号已启用' : '虚拟账号已禁用',

@@ -23,7 +23,7 @@ const ROUTER_PROVIDER_ID = 'cv-switch-router';
  * - model_catalog 聚合所有 Provider 的模型
  * - 虚拟账号控制路由 provider 的 requires_openai_auth
  */
-export function writeCodexConfig(virtualAccount = false): { success: boolean; message: string } {
+export function writeCodexConfig(virtualAccount = false, activeProviderId?: string): { success: boolean; message: string } {
   try {
     if (!fs.existsSync(CODEX_DIR)) {
       fs.mkdirSync(CODEX_DIR, { recursive: true });
@@ -96,7 +96,7 @@ export function writeCodexConfig(virtualAccount = false): { success: boolean; me
     }
 
     // 顶层配置
-    configToml.model_provider = ROUTER_PROVIDER_ID;
+    configToml.model_provider = virtualAccount ? ROUTER_PROVIDER_ID : (activeProviderId || allProviders[0]?.id || ROUTER_PROVIDER_ID);
     configToml.model_catalog_json = CODEX_MODEL_CATALOG_PATH;
     configToml.model_reasoning_effort = 'xhigh';
     configToml.disable_response_storage = true;
