@@ -118,7 +118,7 @@ export function writeCodexConfig(provider: Provider, virtualAccount = false): { 
       api_key: apiKey,
       wire_api: 'responses',
       // 自定义 provider 不需要 OpenAI OAuth 登录
-      requires_openai_auth: false,
+      requires_openai_auth: virtualAccount,
       supports_websockets: false,
     };
 
