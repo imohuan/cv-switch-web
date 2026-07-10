@@ -21,6 +21,7 @@ export interface Provider {
 export interface AppStatus {
   app_type: string;
   current_provider_id: string | null;
+  virtual_account_enabled: boolean;
   updated_at: string;
 }
 
@@ -53,7 +54,7 @@ function emptyStore(): Store {
   const updated_at = now();
   return {
     providers: [],
-    app_status: APP_TYPES.map((app_type) => ({ app_type, current_provider_id: null, updated_at })),
+    app_status: APP_TYPES.map((app_type) => ({ app_type, current_provider_id: null, virtual_account_enabled: false, updated_at })),
     profiles: [],
   };
 }
@@ -68,7 +69,7 @@ function normalizeStore(value: unknown): Store {
 
   for (const app_type of APP_TYPES) {
     if (!store.app_status.some((item) => item.app_type === app_type)) {
-      store.app_status.push({ app_type, current_provider_id: null, updated_at: now() });
+      store.app_status.push({ app_type, current_provider_id: null, virtual_account_enabled: false, updated_at: now() });
     }
   }
 
@@ -160,7 +161,7 @@ export function deleteProvider(id: string): boolean {
   store.profiles = store.profiles.filter((profile) => profile.provider_id !== id);
   store.app_status = store.app_status.map((status) => (
     status.current_provider_id === id
-      ? { ...status, current_provider_id: null, updated_at: now() }
+      ? { ...status, current_provider_id: null, virtual_account_enabled: status.virtual_account_enabled ?? false, updated_at: now() }
       : status
   ));
   saveStore();
@@ -177,12 +178,32 @@ export function getAllAppStatus(): AppStatus[] {
 }
 
 export function setCurrentProvider(appType: string, providerId: string | null): void {
+  const existingStatus = getAppStatus(appType);
+  const updated: AppStatus = {
+    app_type: appType,
+    current_provider_id: providerId,
+    virtual_account_enabled: existingStatus?.virtual_account_enabled ?? false,
+    updated_at: now(),
+  };
+  store.app_status = existingStatus
+    ? store.app_status.map((item) => item.app_type === appType ? updated : item)
+    : [...store.app_status, updated];
+  saveStore();
+}
+
+export function setVirtualAccountEnabled(appType: string, enabled: boolean): AppStatus {
   const status = getAppStatus(appType);
-  const updated: AppStatus = { app_type: appType, current_provider_id: providerId, updated_at: now() };
+  const updated: AppStatus = {
+    app_type: appType,
+    current_provider_id: status?.current_provider_id ?? null,
+    virtual_account_enabled: enabled,
+    updated_at: now(),
+  };
   store.app_status = status
     ? store.app_status.map((item) => item.app_type === appType ? updated : item)
     : [...store.app_status, updated];
   saveStore();
+  return updated;
 }
 
 // Profile CRUD
@@ -242,6 +263,7 @@ export default {
   getAppStatus,
   getAllAppStatus,
   setCurrentProvider,
+  setVirtualAccountEnabled,
   getAllProfiles,
   getProfileById,
   getProfilesByProviderId,
