@@ -899,4 +899,38 @@ router.get('/providers/:id/models/manage', (req: Request, res: Response) => {
 //
 // 方案：不在文件末尾加新路由，而是直接修改原有 POST /profiles 路由
 
+// ── 虚拟账号 toggle（全局，仅 Codex） ──
+
+router.post('/codex/virtual-account/toggle', (req: Request, res: Response) => {
+  try {
+    const enabled = req.body?.enabled === true;
+
+    // 更新全局虚拟账号状态
+    const updatedStatus = db.setVirtualAccountEnabled('codex', enabled);
+
+    // 如果 Codex 当前已连接 Provider，立即重新写 auth.json
+    if (updatedStatus.current_provider_id) {
+      const provider = db.getProviderById(updatedStatus.current_provider_id);
+      if (provider) {
+        const result = writeCodexConfig(provider, enabled);
+        res.json({
+          success: result.success,
+          message: enabled ? '虚拟账号已启用' : '虚拟账号已禁用',
+          data: { enabled },
+        });
+        return;
+      }
+    }
+
+    // 没连 Provider，只更新状态
+    res.json({
+      success: true,
+      message: enabled ? '虚拟账号状态已设为启用（未连接 Provider）' : '虚拟账号状态已设为禁用',
+      data: { enabled },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
