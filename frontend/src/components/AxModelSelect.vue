@@ -1,8 +1,8 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { api } from '../../api'
-import AxDropdown from './AxDropdown.vue'
-import type { ControlSize } from './types'
+import { api } from '../api'
+import AxDropdown from './ui/AxDropdown.vue'
+import type { ControlSize } from './ui/types'
 
 const props = withDefaults(defineProps<{
   modelValue?: string | string[]

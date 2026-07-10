@@ -1,8 +1,8 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { api, type ApiFormat, type ModelTestResult } from "../api"
 import { AxAlert, AxButton } from "./ui"
-import AxModelSelect from "./ui/AxModelSelect.vue"
+import AxModelSelect from "./AxModelSelect.vue"
 
 const props = withDefaults(
   defineProps<{
