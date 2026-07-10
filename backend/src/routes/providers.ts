@@ -437,6 +437,11 @@ router.post('/profiles/:id/apply', (req: Request, res: Response) => {
         const result = writeProfileConfig(tempProfile, effectiveProvider);
         if (result.success) {
           db.setCurrentProvider(target.app_type, matchedProvider.id)
+          if (target.app_type === "codex") {
+            const codexStatus = db.getAppStatus("codex");
+            const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
+            writeCodexConfig(virtualAccount, matchedProvider.id);
+          }
         }
         results.push({ app_type: target.app_type, success: result.success, message: result.message })
       }
@@ -453,6 +458,12 @@ router.post('/profiles/:id/apply', (req: Request, res: Response) => {
     }
 
     const result = writeProfileConfig(profile, provider);
+    if (result.success && profile.app_type === "codex") {
+      db.setCurrentProvider(profile.app_type, provider.id);
+      const codexStatus = db.getAppStatus("codex");
+      const virtualAccount = codexStatus?.virtual_account_enabled ?? false;
+      writeCodexConfig(virtualAccount, provider.id);
+    }
     res.json({
       success: result.success,
       message: result.message,
