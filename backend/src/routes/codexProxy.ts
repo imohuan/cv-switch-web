@@ -78,13 +78,15 @@ router.post('/codex/router/v1/responses', async (req: Request, res: Response) =>
   // 从 model slug 解析 providerId（格式：{providerId}::{modelName}）
   const requestedModel: string = req.body?.model || '';
   const colonIdx = requestedModel.indexOf('::');
-  const providerId = colonIdx > 0 ? requestedModel.substring(0, colonIdx) : null;
+  const providerSlug = colonIdx > 0 ? requestedModel.substring(0, colonIdx) : null;
 
   let provider;
-  if (providerId) {
-    provider = db.getProviderById(providerId);
+  if (providerSlug) {
+    // 根据 name slug 查找 Provider
+    const allProviders = db.getAllProviders();
+    provider = allProviders.find(p => p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') === providerSlug);
     if (!provider) {
-      res.status(400).json({ error: { message: 'Unknown provider: ' + providerId } });
+      res.status(400).json({ error: { message: 'Unknown provider: ' + providerSlug } });
       return;
     }
   } else {
@@ -111,11 +113,13 @@ router.post('/codex/router/v1/responses/compact', async (req: Request, res: Resp
 
   const requestedModel: string = req.body?.model || '';
   const colonIdx = requestedModel.indexOf('::');
-  const providerId = colonIdx > 0 ? requestedModel.substring(0, colonIdx) : null;
+  const providerSlug = colonIdx > 0 ? requestedModel.substring(0, colonIdx) : null;
 
   let provider;
-  if (providerId) {
-    provider = db.getProviderById(providerId);
+  if (providerSlug) {
+    // 根据 name slug 查找 Provider
+    const allProviders = db.getAllProviders();
+    provider = allProviders.find(p => p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') === providerSlug);
   }
   if (!provider) {
     const allProviders = db.getAllProviders();
@@ -144,9 +148,9 @@ router.get('/codex/router/v1/models', (req: Request, res: Response) => {
     const { models } = codexModels(p);
     for (const m of models) {
       allModels.push({
-        id: p.id + '::' + m.model,
+        id: p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '::' + m.model,
         name: p.name + ' / ' + (m.displayName || m.model),
-        model: p.id + '::' + m.model,
+        model: p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '::' + m.model,
         provider: 'custom',
         wire_api: 'responses',
         tools: true,
@@ -204,6 +208,11 @@ async function handleCodexResponses(req: Request, res: Response) {
     logger.codexProxy.error('Auth rejected', { message: auth.message });
     res.status(401).json({ error: { type: 'authentication_error', message: auth.message || 'Unauthorized' } });
     return;
+  }
+
+  // 剥离 model 字段中的 provider:: 前缀（直连 API 只需要纯模型名）
+  if (req.body?.model && req.body.model.includes('::')) {
+    req.body.model = req.body.model.split('::').pop();
   }
 
   const provider = db.getProviderById(req.params.providerId);

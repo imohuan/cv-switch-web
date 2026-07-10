@@ -13,6 +13,10 @@ const CODEX_CONFIG_PATH = path.join(CODEX_DIR, 'config.toml');
 const CODEX_MODEL_CATALOG_PATH = path.join(CODEX_DIR, 'cc-switch-web-model-catalog.json');
 const ROUTER_PROVIDER_ID = 'cv-switch-router';
 
+function providerSlug(p: db.Provider): string {
+  return p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || p.id;
+}
+
 /**
  * Write Codex CLI configuration with all Providers.
  *
@@ -96,7 +100,8 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
     }
 
     // 顶层配置
-    configToml.model_provider = virtualAccount ? ROUTER_PROVIDER_ID : (activeProviderId || allProviders[0]?.id || ROUTER_PROVIDER_ID);
+        const activeSlug = activeProviderId ? (allProviders.find(p => p.id === activeProviderId) ? providerSlug(allProviders.find(p => p.id === activeProviderId)!) : activeProviderId) : (allProviders[0] ? providerSlug(allProviders[0]) : ROUTER_PROVIDER_ID);
+    configToml.model_provider = virtualAccount ? ROUTER_PROVIDER_ID : activeSlug;
     configToml.model_catalog_json = CODEX_MODEL_CATALOG_PATH;
     configToml.model_reasoning_effort = 'xhigh';
     configToml.disable_response_storage = true;
@@ -109,7 +114,7 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
 
     // 清理旧的 cv-switch 管理的 provider/profile（避免残留）
     for (const key of Object.keys(configToml.model_providers)) {
-      if (key === ROUTER_PROVIDER_ID || allProviders.some(p => p.id === key)) {
+      if (key === ROUTER_PROVIDER_ID || allProviders.some(p => providerSlug(p) === key)) {
         // 保留，后续覆盖
       } else if (key.startsWith('aimami_relay_') || key === 'aimai1' || key === 'custom') {
         // 保留 AiMaMi 和旧自定义 provider（不删除用户已有配置）
@@ -126,7 +131,8 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
       const apiKey = useProxy ? 'PROXY_MANAGED' : provider.api_key;
       const { defaultModel } = codexModels(provider);
 
-      configToml.model_providers[provider.id] = {
+      const slug = providerSlug(provider);
+      configToml.model_providers[slug] = {
         name: provider.name,
         base_url: baseUrl,
         api_key: apiKey,
@@ -135,9 +141,9 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
         supports_websockets: false,
       };
 
-      configToml.profiles[provider.id] = {
-        model_provider: provider.id,
-        model: defaultModel,
+      configToml.profiles[slug] = {
+        model_provider: slug,
+        model: slug + '::' + defaultModel,
       };
     }
 
@@ -154,10 +160,10 @@ export function writeCodexConfig(virtualAccount = false, activeProviderId?: stri
 
     configToml.profiles[ROUTER_PROVIDER_ID] = {
       model_provider: ROUTER_PROVIDER_ID,
-      model: allProviders[0]?.id || 'unknown',
+      model: allProviders[0] ? (providerSlug(allProviders[0]) + '::' + (codexModels(allProviders[0]).defaultModel)) : 'unknown',
     };
 
-    const providerIds = allProviders.map(p => p.id).join(', ');
+    const providerIds = allProviders.map(p => providerSlug(p)).join(', ');
     writeTrackedConfigFile(CODEX_CONFIG_PATH, stringifyToml(configToml), {
       model_provider: ROUTER_PROVIDER_ID,
       providers: providerIds || 'none',

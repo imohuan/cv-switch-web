@@ -328,7 +328,8 @@ export function generateAggregatedModelCatalog(providers: Provider[]): ModelsRes
     const { models } = codexModels(provider);
     for (const item of models) {
       const modelSlug = item.model;
-      const fullSlug = provider.id + "::" + modelSlug;
+      const nameSlug = provider.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || provider.id;
+      const fullSlug = nameSlug + "::" + modelSlug;
       const displayName = provider.name + " / " + (item.displayName || modelSlug);
       const contextWindow = Number(item.contextWindow) || 128000;
       const modalities = (item.inputModalities || ["text"]) as InputModality[];
@@ -337,7 +338,7 @@ export function generateAggregatedModelCatalog(providers: Provider[]): ModelsRes
         slug: fullSlug,
         display_name: displayName,
         description: provider.name + " → " + modelSlug,
-        model_provider_ref: provider.id,
+        model_provider_ref: nameSlug,
         default_reasoning_level: "medium",
         supported_reasoning_levels: [
           { effort: "minimal", description: "Minimal reasoning effort" },
