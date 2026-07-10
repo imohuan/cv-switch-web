@@ -209,6 +209,14 @@ export const api = {
   updateProfile: (id: string, data: { name?: string; kind?: string; targets?: any[] }) =>
     request<any>(`/profiles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
+
+  // 虚拟账号 toggle
+  toggleVirtualAccount: (enabled: boolean) =>
+    request<{ enabled: boolean }>('/codex/virtual-account/toggle', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
+
   testModel: (data: {
     providerId?: string
     baseUrl: string
