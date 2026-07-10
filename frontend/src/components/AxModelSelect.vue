@@ -1,8 +1,8 @@
 ﻿<script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { api } from '../api'
-import AxDropdown from './ui/AxDropdown.vue'
-import type { ControlSize } from './ui/types'
+import { ref, computed, watch } from "vue"
+import { api } from "../api"
+import AxDropdown from "./ui/AxDropdown.vue"
+import type { ControlSize } from "./ui/types"
 
 const props = withDefaults(defineProps<{
   modelValue?: string | string[]
@@ -14,35 +14,35 @@ const props = withDefaults(defineProps<{
   placeholder?: string
   size?: ControlSize
 }>(), {
-  modelValue: '',
+  modelValue: "",
   options: undefined,
   multiple: false,
-  placeholder: '选择或输入模型',
-  size: 'lg',
+  placeholder: "选择或输入模型",
+  size: "lg",
 })
 
-const emit = defineEmits<{ 'update:modelValue': [v: string | string[]] }>()
+const emit = defineEmits<{ "update:modelValue": [v: string | string[]] }>()
 
 const models = ref<Array<{ id: string }>>([])
 const fetchLoading = ref(false)
 const open = ref(false)
-const searchText = ref('')
+const searchText = ref("")
 const highlightIndex = ref(-1)
 const searchInputRef = ref<HTMLInputElement | HTMLTextAreaElement | null>(null)
 
 const SIZE_CLASSES: Record<string, string> = {
-  xs: 'h-[18px] px-1.5 py-px text-body-sm', sm: 'h-5 px-2 py-0.5 text-body-sm',
-  md: 'h-6 px-2.5 py-1 text-label-md', lg: 'h-7 px-3 py-1.5 text-label-md',
+  xs: "h-[18px] px-1.5 py-px text-body-sm", sm: "h-5 px-2 py-0.5 text-body-sm",
+  md: "h-6 px-2.5 py-1 text-label-md", lg: "h-7 px-3 py-1.5 text-label-md",
 }
 
 const MULTI_SIZE_CLASSES: Record<string, string> = {
-  xs: 'px-1.5 py-px text-body-sm', sm: 'px-2 py-0.5 text-body-sm',
-  md: 'px-2.5 py-1 text-label-md', lg: 'px-3 py-1.5 text-label-md',
+  xs: "px-1.5 py-px text-body-sm", sm: "px-2 py-0.5 text-body-sm",
+  md: "px-2.5 py-1 text-label-md", lg: "px-3 py-1.5 text-label-md",
 }
 
 const currentValues = computed<(string | number)[]>(() => {
   if (props.multiple) return Array.isArray(props.modelValue) ? props.modelValue : []
-  return props.modelValue && props.modelValue !== '' ? [props.modelValue as string] : []
+  return props.modelValue && props.modelValue !== "" ? [props.modelValue as string] : []
 })
 
 const currentLabels = computed(() => currentValues.value.map(v => ({ value: v, label: String(v) })))
@@ -50,7 +50,7 @@ const currentLabels = computed(() => currentValues.value.map(v => ({ value: v, l
 const options = computed(() => {
   const opts = props.options ? [...props.options] : models.value.map(m => ({ value: m.id, label: m.id }))
   for (const v of currentValues.value) {
-    if (typeof v === 'string' && v && !opts.find(o => o.value === v)) {
+    if (typeof v === "string" && v && !opts.find(o => o.value === v)) {
       opts.unshift({ value: v, label: v })
     }
   }
@@ -73,7 +73,7 @@ async function fetchModels() {
     if (props.providerId) {
       res = await api.fetchModels(props.providerId)
     } else if (props.baseUrl) {
-      res = await api.fetchModelsByConfig(props.baseUrl, props.apiKey || '')
+      res = await api.fetchModelsByConfig(props.baseUrl, props.apiKey || "")
     } else {
       return
     }
@@ -92,9 +92,9 @@ function selectOption(opt: { value: string; label: string }) {
     const idx = cur.indexOf(opt.value)
     if (idx >= 0) cur.splice(idx, 1)
     else cur.push(opt.value)
-    emit('update:modelValue', cur as any)
+    emit("update:modelValue", cur as any)
   } else {
-    emit('update:modelValue', opt.value)
+    emit("update:modelValue", opt.value)
     closeDropdown()
   }
 }
@@ -105,26 +105,26 @@ function commitSearch() {
   if (props.multiple) {
     const curSet = new Set(currentValues.value)
     curSet.add(text)
-    emit('update:modelValue', [...curSet] as any)
-    searchText.value = ''
+    emit("update:modelValue", [...curSet] as any)
+    searchText.value = ""
   } else {
-    emit('update:modelValue', text)
+    emit("update:modelValue", text)
     closeDropdown()
   }
 }
 
 function removeValue(val: string | number) {
   if (!props.multiple) return
-  emit('update:modelValue', currentValues.value.filter(v => v !== val) as any)
+  emit("update:modelValue", currentValues.value.filter(v => v !== val) as any)
 }
 
 function clearAll(e: Event) {
   e.stopPropagation()
-  if (props.multiple) emit('update:modelValue', [] as any)
-  else emit('update:modelValue', '' as any)
+  if (props.multiple) emit("update:modelValue", [] as any)
+  else emit("update:modelValue", "" as any)
 }
 
-function closeDropdown() { open.value = false; searchText.value = ''; highlightIndex.value = -1 }
+function closeDropdown() { open.value = false; searchText.value = ""; highlightIndex.value = -1 }
 function openDropdown() {
   open.value = true
   setTimeout(() => searchInputRef.value?.focus(), 50)
@@ -132,23 +132,23 @@ function openDropdown() {
 
 function handleKeydown(e: KeyboardEvent) {
   const len = filtered.value.length
-  if (e.key === 'ArrowDown') {
+  if (e.key === "ArrowDown") {
     e.preventDefault()
     highlightIndex.value = highlightIndex.value < len - 1 ? highlightIndex.value + 1 : 0
-  } else if (e.key === 'ArrowUp') {
+  } else if (e.key === "ArrowUp") {
     e.preventDefault()
     highlightIndex.value = highlightIndex.value > 0 ? highlightIndex.value - 1 : len - 1
-  } else if (e.key === 'Enter') {
+  } else if (e.key === "Enter") {
     e.preventDefault()
     if (highlightIndex.value >= 0 && highlightIndex.value < len) {
       selectOption(filtered.value[highlightIndex.value])
       if (!props.multiple) return
-      searchText.value = ''
+      searchText.value = ""
       highlightIndex.value = -1
     } else if (searchText.value.trim()) {
       commitSearch()
     }
-  } else if (e.key === 'Escape') {
+  } else if (e.key === "Escape") {
     closeDropdown()
   }
 }
@@ -156,12 +156,15 @@ function handleKeydown(e: KeyboardEvent) {
 // Highlight scroll
 function scrollToHighlight(el: HTMLElement | null) {
   if (!el) return
-  const items = el.querySelectorAll('[data-option]')
-  if (items.length) items[highlightIndex.value]?.scrollIntoView({ block: 'nearest' })
+  const items = el.querySelectorAll("[data-option]")
+  if (items.length) items[highlightIndex.value]?.scrollIntoView({ block: "nearest" })
 }
 
 // Reset on close
-watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value = -1 } })
+watch(open, (val) => { if (!val) { searchText.value = ""; highlightIndex.value = -1 } })
+
+// Expose for external use
+defineExpose({ fetchModels })
 </script>
 
 <template>
@@ -194,7 +197,6 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
                 </div>
               </div>
               <div v-else class="w-full h-full flex flex-col gap-2 pr-5">
-                <!-- <span class="text-secondary text-[11px]">{{ placeholder }}</span> -->
                 <div class="flex flex-1 flex-col items-center justify-center gap-1 text-secondary">
                   <span class="material-symbols-outlined text-[20px] leading-none">model_training</span>
                   <span class="text-[11px]">暂未选择模型</span>
@@ -202,7 +204,7 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
                 </div>
               </div>
             </template>
-            <!-- Single select: unchanged -->
+            <!-- Single select -->
             <template v-else>
               <span class="flex-1 min-w-0 truncate text-left">
                 <span v-if="!hasValue" class="text-secondary">{{ placeholder }}</span>
@@ -218,9 +220,8 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
               </div>
             </template>
           </template>
-          <!-- Open state: tags + input -->
+          <!-- Open state -->
           <template v-else>
-            <!-- Multi-select: tags area (top, finite height) + textarea (flex-1) -->
             <template v-if="multiple">
               <div v-if="currentLabels.length > 0"
                 class="w-full flex flex-wrap items-start gap-1 max-h-[60px] overflow-y-auto">
@@ -240,7 +241,6 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
                 class="flex-1 w-full min-h-0 mt-1 bg-transparent border-none px-2 py-1 text-label-md font-label-md text-primary placeholder:text-secondary resize-none focus:outline-none focus:ring-0"
                 @keydown="handleKeydown" @click.stop />
             </template>
-            <!-- Single select: unchanged -->
             <template v-else>
               <div class="flex-1 flex items-center gap-1 min-w-0">
                 <input ref="searchInputRef" v-model="searchText" type="text" placeholder="输入模型名搜索或手动输入..."
@@ -265,13 +265,15 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
           :class="(!multiple && currentValues[0] === opt.value) ? 'bg-primary text-on-primary font-medium'
             : highlightIndex === idx ? 'bg-surface-container-highest' : multiple && currentValues.includes(opt.value) ? 'bg-primary/10' : 'text-primary hover:bg-surface-container-low'"
           @click="selectOption(opt)" @mouseenter="highlightIndex = idx">
-          <span v-if="multiple"
-            class="inline-flex items-center justify-center w-4 h-4 rounded border transition-colors shrink-0"
-            :class="currentValues.includes(opt.value) ? 'bg-primary border-primary' : 'border-outline-variant'">
-            <span v-if="currentValues.includes(opt.value)"
-              class="material-symbols-outlined text-[12px] text-on-primary">check</span>
-          </span>
-          <span class="truncate">{{ opt.label }}</span>
+          <slot name="option" :option="opt" :selected="currentValues.includes(opt.value)" :multiple="multiple">
+            <span v-if="multiple"
+              class="inline-flex items-center justify-center w-4 h-4 rounded border transition-colors shrink-0"
+              :class="currentValues.includes(opt.value) ? 'bg-primary border-primary' : 'border-outline-variant'">
+              <span v-if="currentValues.includes(opt.value)"
+                class="material-symbols-outlined text-[12px] text-on-primary">check</span>
+            </span>
+            <span class="truncate">{{ opt.label }}</span>
+          </slot>
         </button>
         <div v-if="filtered.length === 0 && searchText.trim()" class="py-2 px-3">
           <button
@@ -285,7 +287,6 @@ watch(open, (val) => { if (!val) { searchText.value = ''; highlightIndex.value =
             <span class="material-symbols-outlined text-[14px] text-secondary">inventory_2</span>
             <span>暂无可用模型</span>
           </div>
-          <!-- <div class="text-[10px] text-on-surface-variant opacity-70">可手动输入模型名</div> -->
         </div>
       </div>
     </template>
