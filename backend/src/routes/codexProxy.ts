@@ -64,6 +64,102 @@ function verifyVirtualAccountAuth(req: Request): { ok: boolean; message?: string
   return { ok: true };
 }
 
+// ── 路由 API：/codex/router/v1 ──
+// 智能路由层：根据请求中的 model slug（格式 {providerId}::{modelName}）选择上游 Provider
+
+router.post('/codex/router/v1/responses', async (req: Request, res: Response) => {
+  // JWT 验证（虚拟账号模式下必须）
+  const auth = verifyVirtualAccountAuth(req);
+  if (!auth.ok) {
+    res.status(401).json({ error: { type: 'authentication_error', message: auth.message || 'Unauthorized' } });
+    return;
+  }
+
+  // 从 model slug 解析 providerId（格式：{providerId}::{modelName}）
+  const requestedModel: string = req.body?.model || '';
+  const colonIdx = requestedModel.indexOf('::');
+  const providerId = colonIdx > 0 ? requestedModel.substring(0, colonIdx) : null;
+
+  let provider;
+  if (providerId) {
+    provider = db.getProviderById(providerId);
+    if (!provider) {
+      res.status(400).json({ error: { message: 'Unknown provider: ' + providerId } });
+      return;
+    }
+  } else {
+    // Fallback：用第一个有 codex 模型的 Provider
+    const allProviders = db.getAllProviders();
+    provider = allProviders[0];
+    if (!provider) {
+      res.status(500).json({ error: { message: 'No available providers' } });
+      return;
+    }
+  }
+
+  // 注入 providerId 到 params，复用现有 handleCodexResponses
+  req.params.providerId = provider.id;
+  await handleCodexResponses(req, res);
+});
+
+router.post('/codex/router/v1/responses/compact', async (req: Request, res: Response) => {
+  const auth = verifyVirtualAccountAuth(req);
+  if (!auth.ok) {
+    res.status(401).json({ error: { type: 'authentication_error', message: auth.message || 'Unauthorized' } });
+    return;
+  }
+
+  const requestedModel: string = req.body?.model || '';
+  const colonIdx = requestedModel.indexOf('::');
+  const providerId = colonIdx > 0 ? requestedModel.substring(0, colonIdx) : null;
+
+  let provider;
+  if (providerId) {
+    provider = db.getProviderById(providerId);
+  }
+  if (!provider) {
+    const allProviders = db.getAllProviders();
+    provider = allProviders[0];
+  }
+  if (!provider) {
+    res.status(500).json({ error: { message: 'No available providers' } });
+    return;
+  }
+
+  req.params.providerId = provider.id;
+  await handleCodexResponses(req, res);
+});
+
+router.get('/codex/router/v1/models', (req: Request, res: Response) => {
+  const auth = verifyVirtualAccountAuth(req);
+  if (!auth.ok) {
+    res.status(401).json({ error: { message: auth.message || 'Unauthorized' } });
+    return;
+  }
+
+  // 返回所有 Provider 的所有模型
+  const allProviders = db.getAllProviders();
+  const allModels: any[] = [];
+  for (const p of allProviders) {
+    const { models } = codexModels(p);
+    for (const m of models) {
+      allModels.push({
+        id: p.id + '::' + m.model,
+        name: p.name + ' / ' + (m.displayName || m.model),
+        model: p.id + '::' + m.model,
+        provider: 'custom',
+        wire_api: 'responses',
+        tools: true,
+        parallel_tool_calls: m.supportsParallelToolCalls ?? true,
+        context_window: Number(m.contextWindow) || 128000,
+        input_modalities: m.inputModalities || ['text'],
+      });
+    }
+  }
+  res.json({ models: allModels });
+});
+
+
 router.get('/codex/:providerId/v1/models', (req: Request, res: Response) => {
   // 登录拦截
   const auth = verifyVirtualAccountAuth(req);
@@ -503,100 +599,5 @@ function trimTrailingSlash(value: string) { return value.replace(/\/+$/, ''); }
 function nowSec() { return Math.floor(Date.now() / 1000); }
 
 
-
-// ── 路由 API：/codex/router/v1 ──
-// 智能路由层：根据请求中的 model slug（格式 {providerId}::{modelName}）选择上游 Provider
-
-router.post('/codex/router/v1/responses', async (req: Request, res: Response) => {
-  // JWT 验证（虚拟账号模式下必须）
-  const auth = verifyVirtualAccountAuth(req);
-  if (!auth.ok) {
-    res.status(401).json({ error: { type: 'authentication_error', message: auth.message || 'Unauthorized' } });
-    return;
-  }
-
-  // 从 model slug 解析 providerId（格式：{providerId}::{modelName}）
-  const requestedModel: string = req.body?.model || '';
-  const colonIdx = requestedModel.indexOf('::');
-  const providerId = colonIdx > 0 ? requestedModel.substring(0, colonIdx) : null;
-
-  let provider;
-  if (providerId) {
-    provider = db.getProviderById(providerId);
-    if (!provider) {
-      res.status(400).json({ error: { message: 'Unknown provider: ' + providerId } });
-      return;
-    }
-  } else {
-    // Fallback：用第一个有 codex 模型的 Provider
-    const allProviders = db.getAllProviders();
-    provider = allProviders[0];
-    if (!provider) {
-      res.status(500).json({ error: { message: 'No available providers' } });
-      return;
-    }
-  }
-
-  // 注入 providerId 到 params，复用现有 handleCodexResponses
-  req.params.providerId = provider.id;
-  await handleCodexResponses(req, res);
-});
-
-router.post('/codex/router/v1/responses/compact', async (req: Request, res: Response) => {
-  const auth = verifyVirtualAccountAuth(req);
-  if (!auth.ok) {
-    res.status(401).json({ error: { type: 'authentication_error', message: auth.message || 'Unauthorized' } });
-    return;
-  }
-
-  const requestedModel: string = req.body?.model || '';
-  const colonIdx = requestedModel.indexOf('::');
-  const providerId = colonIdx > 0 ? requestedModel.substring(0, colonIdx) : null;
-
-  let provider;
-  if (providerId) {
-    provider = db.getProviderById(providerId);
-  }
-  if (!provider) {
-    const allProviders = db.getAllProviders();
-    provider = allProviders[0];
-  }
-  if (!provider) {
-    res.status(500).json({ error: { message: 'No available providers' } });
-    return;
-  }
-
-  req.params.providerId = provider.id;
-  await handleCodexResponses(req, res);
-});
-
-router.get('/codex/router/v1/models', (req: Request, res: Response) => {
-  const auth = verifyVirtualAccountAuth(req);
-  if (!auth.ok) {
-    res.status(401).json({ error: { message: auth.message || 'Unauthorized' } });
-    return;
-  }
-
-  // 返回所有 Provider 的所有模型
-  const allProviders = db.getAllProviders();
-  const allModels: any[] = [];
-  for (const p of allProviders) {
-    const { models } = codexModels(p);
-    for (const m of models) {
-      allModels.push({
-        id: p.id + '::' + m.model,
-        name: p.name + ' / ' + (m.displayName || m.model),
-        model: p.id + '::' + m.model,
-        provider: 'custom',
-        wire_api: 'responses',
-        tools: true,
-        parallel_tool_calls: m.supportsParallelToolCalls ?? true,
-        context_window: Number(m.contextWindow) || 128000,
-        input_modalities: m.inputModalities || ['text'],
-      });
-    }
-  }
-  res.json({ models: allModels });
-});
 
 export default router;
