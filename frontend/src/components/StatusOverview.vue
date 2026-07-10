@@ -1,15 +1,16 @@
-<script setup lang="ts">
-import { ref } from 'vue'
+﻿<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
 import { STATUS_APPS, APP_LABELS } from '../constants'
-import { api, type Provider, type AppStatus } from '../api'
+import { api, type Provider, type Profile, type AppStatus } from '../api'
 import { useNotify } from './ui'
 import AxSelect from './ui/AxSelect.vue'
+import AxSwitch from './ui/AxSwitch.vue'
 import AxButton from './ui/AxButton.vue'
 import WorkBuddyModels from './WorkBuddyModels.vue'
 import LocalConfigViewer from './LocalConfigViewer.vue'
 import { useConfigViewer } from '../composables/useConfigViewer'
 async function handleApplyProfile(profileId: string) {
-  const res = await api.applyProfile(profileId)
+  const res = await api.applyProfile(profileId, statusAppTab.value)
   if (res.success) {
     emit('refresh')
     triggerNotify('Profile 已应用', 'success')
@@ -20,6 +21,7 @@ async function handleApplyProfile(profileId: string) {
 
 const props = defineProps<{
   providers: Provider[]
+  profiles: Profile[]
   statuses: Record<string, AppStatus>
   providerOptions: Array<{ value: string; label: string }>
 }>()
@@ -34,8 +36,24 @@ const {
   toggleAppConfig, toggleAppFileExpand, expandedAppFileKey, loadAppConfig,
 } = useConfigViewer()
 
-const statusAppTab = ref<string>('codex')
+
+const statusAppTab = ref<string>(localStorage.getItem('statusAppTab') || 'codex')
+watch(statusAppTab, (v) => localStorage.setItem('statusAppTab', v))
+const profileOptions = computed(() => {
+  return props.profiles
+    .filter(p => {
+      try {
+        const extra = JSON.parse(p.extra_config || '{}')
+        if (extra.targets && Array.isArray(extra.targets)) {
+          return extra.targets.some((t: any) => t.app_type === statusAppTab.value)
+        }
+        return true
+      } catch { return true }
+    })
+    .map(p => ({ value: p.id, label: p.name }))
+})
 const workBuddyReadable = ref(false)
+const virtualAccountEnabled = ref(false)
 
 async function handleSwitch(appType: string, providerId: string) {
   const res = await api.switchProvider(appType, providerId)
@@ -115,25 +133,11 @@ async function handleClear(appType: string) {
             </div>
           </div>
 
-                    <!-- 应用 Profile -->
+          <!-- 切换 Profile -->
           <div class="mt-ax-sm bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
-            <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider block mb-ax-xs">应用 Profile 预设</span>
-            <div class="flex gap-ax-sm">
-              <select
-                class="flex-1 h-7 px-2 rounded-md border border-outline-variant bg-surface-container-low text-label-md text-primary"
-                @change="(e: Event) => { const sel = (e.target as HTMLSelectElement).value; if (sel) handleApplyProfile(sel) }"
-              >
-                <option value="">选择 Profile 应用...</option>
-                <option v-for="p in (statuses[statusAppTab]?.matching_profiles || [])" :key="p.id" :value="p.id">{{ p.name }}</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- 切换 Provider -->
-          <div class="mt-ax-sm bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
-            <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider block mb-ax-xs">切换 Provider</span>
-            <AxSelect :options="providerOptions" :placeholder="`选择新 Provider 替换当前连接`" size="lg"
-              trigger-max-width="100%" @update:model-value="(v: string) => handleSwitch(statusAppTab, v)" />
+            <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider block mb-ax-xs">切换 Profile</span>
+            <AxSelect :options="profileOptions" :placeholder="`选择 Profile 替换当前连接`" size="lg"
+              trigger-max-width="100%" @update:model-value="(v: string) => handleApplyProfile(v)" />
           </div>
         </template>
 
@@ -143,12 +147,26 @@ async function handleClear(appType: string) {
             <span class="w-3 h-3 rounded-full bg-outline shrink-0" />
             <div>
               <p class="font-label-md text-label-md font-semibold text-secondary">未连接</p>
-              <p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">选择一个 Provider 进行连接</p>
+              <p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">选择一个 Profile 进行连接</p>
             </div>
           </div>
-          <AxSelect :options="providerOptions" placeholder="选择 Provider" size="lg" trigger-max-width="100%"
-            @update:model-value="(v: string) => handleSwitch(statusAppTab, v)" />
+          <AxSelect :options="profileOptions" placeholder="选择 Profile" size="lg" trigger-max-width="100%"
+            @update:model-value="(v: string) => handleApplyProfile(v)" />
         </template>
+
+        <!-- 虚拟账号（仅 Codex） -->
+        <div v-if="statusAppTab === 'codex'" class="mt-ax-sm bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-ax-sm">
+              <span class="material-symbols-outlined text-[16px] text-primary">account_circle</span>
+              <div>
+                <span class="font-label-md text-label-md font-semibold text-primary">虚拟账号</span>
+                <p class="font-body-sm text-[11px] text-secondary mt-0.5">管理 Codex 登录身份与路由配置</p>
+              </div>
+            </div>
+            <AxSwitch v-model="virtualAccountEnabled" size="md" />
+          </div>
+        </div>
 
         <!-- 查看本地配置 -->
         <div class="mt-ax-md border-t border-outline-variant pt-ax-md">

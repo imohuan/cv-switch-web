@@ -95,6 +95,19 @@ const showDialog = ref(false)
 const editingProfileId = ref<string | null>(null)
 const profileName = ref('')
 
+function getProfileTargets(profile: Profile) {
+  try {
+    const extra = JSON.parse(profile.extra_config || '{}')
+    if (extra.targets && Array.isArray(extra.targets)) {
+      return extra.targets.map((t: any) => {
+        const plat = PLATFORMS.find(p => p.id === t.app_type)
+        return plat ? { ...plat, model: t.model || '-' } : null
+      }).filter(Boolean)
+    }
+  } catch { /* ignore */ }
+  return []
+}
+
 async function openCreateDialog() {
   await loadAllProviderModels()
   editingProfileId.value = null
@@ -240,25 +253,20 @@ async function handleDelete(profileId: string) {
               <h4 class="font-headline-sm text-headline-sm text-primary">{{ profile.name }}</h4>
               <span class="rounded-full bg-purple-50 text-purple-700 font-label-md text-[11px] px-2 py-0.5 border border-purple-200">统一预设</span>
             </div>
-            <div class="space-y-ax-xs">
-              <div class="flex items-center gap-ax-sm text-body-sm text-secondary bg-surface-container-low rounded-lg px-ax-sm py-ax-xs">
-                <span class="material-symbols-outlined text-[14px]">terminal</span>
-                <span class="font-medium w-24">Codex CLI</span>
+                        <div class="space-y-ax-xs">
+              <div v-for="t in getProfileTargets(profile)" :key="t.id"
+                class="flex items-center gap-ax-sm text-body-sm text-secondary bg-surface-container-low rounded-lg px-ax-sm py-ax-xs">
+                <span class="material-symbols-outlined text-[14px]">{{ t.icon }}</span>
+                <span class="font-medium w-24">{{ t.label }}</span>
                 <span class="text-outline-variant">→</span>
-                <code class="text-[11px]">gpt-4o</code>
-              </div>
-              <div class="flex items-center gap-ax-sm text-body-sm text-secondary bg-surface-container-low rounded-lg px-ax-sm py-ax-xs">
-                <span class="material-symbols-outlined text-[14px]">auto_awesome</span>
-                <span class="font-medium w-24">Claude Code</span>
-                <span class="text-outline-variant">→</span>
-                <code class="text-[11px]">claude-sonnet-4</code>
+                <code class="text-[11px]">{{ t.model }}</code>
               </div>
             </div>
           </div>
-          <div class="flex gap-ax-sm ml-ax-md">
-            <AxButton size="lg" @click="() => handleApply()">应用</AxButton>
-            <AxButton size="lg" variant="outline" @click="openEditDialog(profile)">编辑</AxButton>
-            <AxButton size="lg" variant="danger" @click="handleDelete(profile.id)">删除</AxButton>
+          <div class="flex flex-col gap-ax-xs ml-ax-md shrink-0">
+            <AxButton size="sm" icon="bolt" @click="() => handleApply()">应用</AxButton>
+            <AxButton size="sm" variant="outline" icon="edit" @click="openEditDialog(profile)">编辑</AxButton>
+            <AxButton size="sm" variant="danger" icon="delete" @click="handleDelete(profile.id)">删除</AxButton>
           </div>
         </div>
       </div>
@@ -366,8 +374,8 @@ async function handleDelete(profileId: string) {
 
       <!-- 固定底部按钮 -->
       <div class="flex justify-end gap-ax-sm px-ax-lg py-ax-sm border-t border-outline-variant shrink-0">
-        <AxButton size="lg" variant="outline" @click="showDialog = false">取消</AxButton>
-        <AxButton size="lg" type="submit" @click="handleSave">保存</AxButton>
+        <AxButton size="md" variant="outline" icon="close" @click="showDialog = false">取消</AxButton>
+        <AxButton size="md" icon="save" type="submit" @click="handleSave">保存</AxButton>
       </div>
     </div>
   </div>

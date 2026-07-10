@@ -395,7 +395,12 @@ router.post('/profiles/:id/apply', (req: Request, res: Response) => {
       // ── 多平台 apply ──
       const results: Array<{ app_type: string; success: boolean; message: string }> = []
 
+      // 可选 appType 参数：只应用指定平台（概览页单平台切换用）
+      const filterAppType = req.body?.appType as string | undefined
+
       for (const target of extra.targets) {
+        if (filterAppType && target.app_type !== filterAppType) continue
+
         // 查找匹配该模型的 Provider
         const allProviders = db.getAllProviders()
         let matchedProvider = null

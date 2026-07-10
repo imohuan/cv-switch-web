@@ -48,12 +48,14 @@ onBeforeUnmount(() => {
         :live-time="liveTime"
         @refresh="loadData"
         @add-provider="providerFormDialog?.openForm(null)"
+        @add-profile="navTab = 'profiles'"
       />
 
       <main class="flex-1 overflow-y-auto px-margin pt-ax-xl pb-ax-lg">
         <StatusOverview
           v-if="navTab === 'status'"
           :providers="providers"
+          :profiles="profiles"
           :statuses="statuses"
           :provider-options="providerOptions"
           @refresh="loadData"
@@ -67,6 +69,7 @@ onBeforeUnmount(() => {
           :statuses="statuses"
           @edit="(p: any) => providerFormDialog?.openForm(p)"
           @refresh="loadData"
+          @add-provider="providerFormDialog?.openForm(null)"
         />
       </main>
 

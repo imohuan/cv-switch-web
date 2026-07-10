@@ -128,8 +128,8 @@ defineExpose({ openForm })
     <!-- Footer -->
     <template #footer>
       <div class="flex justify-end gap-ax-sm">
-        <AxButton variant="outline" @click="showForm = false">取消</AxButton>
-        <AxButton @click="onSave">{{ editingProvider ? '保存' : '添加' }}</AxButton>
+        <AxButton size="md" variant="outline" icon="close" @click="showForm = false">取消</AxButton>
+        <AxButton size="md" icon="save" @click="onSave">{{ editingProvider ? '保存' : '添加' }}</AxButton>
       </div>
     </template>
   </AxDialog>

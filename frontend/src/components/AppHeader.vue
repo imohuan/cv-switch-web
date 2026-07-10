@@ -8,7 +8,6 @@ defineProps<{
 
 const emit = defineEmits<{
   refresh: []
-  addProvider: []
 }>()
 </script>
 
@@ -26,12 +25,6 @@ const emit = defineEmits<{
         @click="emit('refresh')">
         <span class="material-symbols-outlined text-[16px]">refresh</span>
         <span>刷新</span>
-      </button>
-      <button
-        class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-label-md font-label-md bg-primary text-on-primary hover:bg-primary/90 transition-colors cursor-pointer"
-        @click="emit('addProvider')">
-        <span class="material-symbols-outlined text-[16px]">add</span>
-        <span>添加 Provider</span>
       </button>
     </div>
   </header>

@@ -12,6 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   edit: [provider: Provider]
   refresh: []
+  addProvider: []
 }>()
 
 const { triggerNotify } = useNotify()
@@ -48,9 +49,12 @@ async function handleDelete(id: string) {
         <h3 class="font-headline-sm text-headline-sm text-primary">Provider 管理</h3>
         <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">管理 API 接入点，支持多种协议格式</p>
       </div>
-      <span class="rounded-full bg-surface-container-low border border-outline-variant text-secondary font-label-md text-label-md px-2.5 py-1">
-        {{ providers.length }} 个 Provider
-      </span>
+      <div class="flex items-center gap-ax-sm">
+        <span class="rounded-full bg-surface-container-low border border-outline-variant text-secondary font-label-md text-label-md px-2.5 py-1">
+          {{ providers.length }} 个 Provider
+        </span>
+        <AxButton size="lg" icon="add" @click="emit('addProvider')">添加 Provider</AxButton>
+      </div>
     </div>
 
     <div v-if="providers.length === 0"
@@ -59,43 +63,47 @@ async function handleDelete(id: string) {
       <p>暂无 Provider。</p>
       <p class="mt-1">点击右上角「添加 Provider」配置你的第一个 API 接入点</p>
     </div>
-    <div v-else class="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-ax-md">
+    <div v-else class="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-ax-sm">
       <div v-for="p in providers" :key="p.id"
-        class="bg-surface-container-lowest border rounded-lg p-ax-md transition-colors"
+        class="bg-surface-container-lowest border rounded-lg p-ax-sm transition-colors"
         :class="getActiveApps(p.id).length > 0 ? 'border-primary/40' : 'border-outline-variant'">
-        <div class="flex items-center justify-between mb-ax-sm">
-          <h4 class="font-label-md text-label-md font-semibold text-primary">{{ p.name }}</h4>
-          <span class="rounded-full bg-surface-container-low border border-outline-variant text-secondary font-label-md text-[11px] px-2 py-0.5">
+        <!-- 标题行 -->
+        <div class="flex items-center justify-between mb-ax-xs">
+          <h4 class="font-label-md text-label-md font-semibold text-primary truncate">{{ p.name }}</h4>
+          <span class="rounded-full bg-surface-container-low border border-outline-variant text-secondary font-label-md text-[10px] px-1.5 py-0.5 shrink-0">
             {{ providerTypeLabel(p) }}
           </span>
         </div>
-        <div class="space-y-ax-sm">
-          <div class="bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
-            <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">Base URL</span>
-            <code class="block font-label-md text-label-md text-primary mt-0.5 break-all">{{ p.base_url }}</code>
+        <!-- 紧凑字段 -->
+        <div class="space-y-0.5 mb-ax-xs">
+          <div class="flex items-center gap-ax-xs text-[11px]">
+            <span class="text-secondary shrink-0 w-14">Base URL</span>
+            <code class="text-primary truncate">{{ p.base_url }}</code>
           </div>
-          <div class="bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
-            <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">API Key</span>
-            <code class="block font-label-md text-label-md text-primary mt-0.5 break-all">{{ p.api_key }}</code>
+          <div class="flex items-center gap-ax-xs text-[11px]">
+            <span class="text-secondary shrink-0 w-14">API Key</span>
+            <code class="text-primary truncate">{{ p.api_key }}</code>
           </div>
-          <div v-if="p.model" class="bg-surface-container-low border border-outline-variant rounded-lg p-ax-sm">
-            <span class="font-label-md text-[10px] text-secondary uppercase tracking-wider">Model</span>
-            <code class="block font-label-md text-label-md text-primary mt-0.5 break-all">{{ p.model }}</code>
-          </div>
-          <div class="flex flex-wrap gap-ax-xs">
-            <span v-for="f in providerCapabilities(p)" :key="f"
-              class="rounded-full bg-secondary-container/70 text-on-secondary-container font-label-md text-[11px] px-2 py-0.5">
-              {{ API_FORMAT_LABELS[f] || f }}
-            </span>
-            <span v-for="app in getActiveApps(p.id)" :key="app"
-              class="rounded-full bg-primary/10 text-primary font-label-md text-[11px] px-2 py-0.5">
-              {{ APP_LABELS[app] || app }}
-            </span>
+          <div v-if="p.model" class="flex items-center gap-ax-xs text-[11px]">
+            <span class="text-secondary shrink-0 w-14">Model</span>
+            <code class="text-primary truncate">{{ p.model }}</code>
           </div>
         </div>
-        <div class="flex gap-ax-sm mt-ax-md pt-ax-sm border-t border-outline-variant">
-          <AxButton size="lg" variant="outline" @click="emit('edit', p)">编辑</AxButton>
-          <AxButton size="lg" variant="danger" @click="handleDelete(p.id)">删除</AxButton>
+        <!-- 标签 -->
+        <div class="flex flex-wrap gap-ax-xs mb-ax-xs">
+          <span v-for="f in providerCapabilities(p)" :key="f"
+            class="rounded-full bg-secondary-container/70 text-on-secondary-container font-label-md text-[10px] px-1.5 py-0.5">
+            {{ API_FORMAT_LABELS[f] || f }}
+          </span>
+          <span v-for="app in getActiveApps(p.id)" :key="app"
+            class="rounded-full bg-primary/10 text-primary font-label-md text-[10px] px-1.5 py-0.5">
+            {{ APP_LABELS[app] || app }}
+          </span>
+        </div>
+        <!-- 按钮 -->
+        <div class="flex gap-ax-xs pt-ax-xs border-t border-outline-variant">
+          <AxButton size="sm" variant="outline" icon="edit" @click="emit('edit', p)">编辑</AxButton>
+          <AxButton size="sm" variant="danger" icon="delete" @click="handleDelete(p.id)">删除</AxButton>
         </div>
       </div>
     </div>

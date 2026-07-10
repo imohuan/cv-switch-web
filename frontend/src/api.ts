@@ -145,8 +145,8 @@ export const api = {
   getProfiles: () => request<Profile[]>('/profiles'),
   createProfile: (data: { name: string; app_type: string; provider_id: string; extra_config?: string }) =>
     request<Profile>('/profiles', { method: 'POST', body: JSON.stringify(data) }),
-  applyProfile: (id: string) =>
-    request<Profile>(`/profiles/${id}/apply`, { method: 'POST' }),
+  applyProfile: (id: string, appType?: string) =>
+    request<Profile>(`/profiles/${id}/apply`, { method: 'POST', body: appType ? JSON.stringify({ appType }) : undefined }),
   getProfileConfig: (id: string) =>
     request<{ home_dir: string; app_type: string; files: ConfigFilePayload[] }>(`/profiles/${id}/config`),
   getAppConfig: (appType: string) =>
