@@ -65,7 +65,7 @@ async function handleDelete(id: string) {
     </div>
     <div v-else class="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-ax-sm">
       <div v-for="p in providers" :key="p.id"
-        class="bg-surface-container-lowest border rounded-lg p-ax-sm transition-colors"
+        class="bg-surface-container-lowest border rounded-lg p-ax-sm transition-colors flex flex-col h-full"
         :class="getActiveApps(p.id).length > 0 ? 'border-primary/40' : 'border-outline-variant'">
         <!-- 标题行 -->
         <div class="flex items-center justify-between mb-ax-xs">
@@ -74,31 +74,33 @@ async function handleDelete(id: string) {
             {{ providerTypeLabel(p) }}
           </span>
         </div>
-        <!-- 紧凑字段 -->
-        <div class="space-y-0.5 mb-ax-xs">
-          <div class="flex items-center gap-ax-xs text-[11px]">
-            <span class="text-secondary shrink-0 w-14">Base URL</span>
-            <code class="text-primary truncate">{{ p.base_url }}</code>
+        <!-- 内容区域 flex-1 -->
+        <div class="flex-1">
+          <div class="space-y-0.5 mb-ax-xs">
+            <div class="flex items-center gap-ax-xs text-[11px]">
+              <span class="text-secondary shrink-0 w-14">Base URL</span>
+              <code class="text-primary truncate">{{ p.base_url }}</code>
+            </div>
+            <div class="flex items-center gap-ax-xs text-[11px]">
+              <span class="text-secondary shrink-0 w-14">API Key</span>
+              <code class="text-primary truncate">{{ p.api_key }}</code>
+            </div>
+            <div v-if="p.model" class="flex items-center gap-ax-xs text-[11px]">
+              <span class="text-secondary shrink-0 w-14">Model</span>
+              <code class="text-primary truncate">{{ p.model }}</code>
+            </div>
           </div>
-          <div class="flex items-center gap-ax-xs text-[11px]">
-            <span class="text-secondary shrink-0 w-14">API Key</span>
-            <code class="text-primary truncate">{{ p.api_key }}</code>
+          <!-- 标签 -->
+          <div class="flex flex-wrap gap-ax-xs mb-ax-xs">
+            <span v-for="f in providerCapabilities(p)" :key="f"
+              class="rounded-full bg-secondary-container/70 text-on-secondary-container font-label-md text-[10px] px-1.5 py-0.5">
+              {{ API_FORMAT_LABELS[f] || f }}
+            </span>
+            <span v-for="app in getActiveApps(p.id)" :key="app"
+              class="rounded-full bg-primary/10 text-primary font-label-md text-[10px] px-1.5 py-0.5">
+              {{ APP_LABELS[app] || app }}
+            </span>
           </div>
-          <div v-if="p.model" class="flex items-center gap-ax-xs text-[11px]">
-            <span class="text-secondary shrink-0 w-14">Model</span>
-            <code class="text-primary truncate">{{ p.model }}</code>
-          </div>
-        </div>
-        <!-- 标签 -->
-        <div class="flex flex-wrap gap-ax-xs mb-ax-xs">
-          <span v-for="f in providerCapabilities(p)" :key="f"
-            class="rounded-full bg-secondary-container/70 text-on-secondary-container font-label-md text-[10px] px-1.5 py-0.5">
-            {{ API_FORMAT_LABELS[f] || f }}
-          </span>
-          <span v-for="app in getActiveApps(p.id)" :key="app"
-            class="rounded-full bg-primary/10 text-primary font-label-md text-[10px] px-1.5 py-0.5">
-            {{ APP_LABELS[app] || app }}
-          </span>
         </div>
         <!-- 按钮 -->
         <div class="flex gap-ax-xs pt-ax-xs border-t border-outline-variant">
