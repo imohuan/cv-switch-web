@@ -23,11 +23,11 @@ const {
   openForm, fetchAllModels, handleSave, setNewApiPreset,
 } = useProviderForm()
 
-function onSaved() {
+async function onSaved() {
   emit("saved")
 }
 
-function onSave() {
+async function onSave() {
   handleSave(onSaved)
 }
 

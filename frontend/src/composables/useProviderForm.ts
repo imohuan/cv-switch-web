@@ -34,7 +34,7 @@ export function useProviderForm() {
 
     // 编辑时从已保存的 models 恢复模型标签（避免刷新后变空）
     // 优先 extra_config.models（新格式），fallback extra_config.codex.models（旧格式）
-    const savedModels = extra.models || extra.codex?.models || []
+    const savedModels = (extra as any).models || extra.codex?.models || []
     if (savedModels.length > 0) {
       fetchedModels.value = savedModels.map((m: any) => ({
         value: m.id || m.model,

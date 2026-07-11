@@ -176,7 +176,7 @@ async function handleClear(appType: string) {
               </span> -->
             </div>
             <AxSelect :model-value="currentProfileId" :options="profileOptions" :placeholder="`选择 Profile 替换当前连接`"
-              size="lg" trigger-max-width="100%" @update:model-value="(v: string) => handleApplyProfile(v)" />
+              size="lg" trigger-max-width="100%" @update:model-value="(v: any) => handleApplyProfile(v as string)" />
           </div>
         </template>
 
@@ -190,7 +190,7 @@ async function handleClear(appType: string) {
             </div>
           </div>
           <AxSelect :options="profileOptions" placeholder="选择 Profile" size="lg" trigger-max-width="100%"
-            @update:model-value="(v: string) => handleApplyProfile(v)" />
+            @update:model-value="(v: any) => handleApplyProfile(v as string)" />
         </template>
 
         <!-- 虚拟账号（仅 Codex） -->

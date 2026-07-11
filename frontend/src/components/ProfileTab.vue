@@ -158,8 +158,8 @@ async function handleSave() {
     if (!isPlatformSelected(p.id)) continue
     const cfg = platformConfigs.value[p.id]
     const t: ProfileTargetData = { app_type: p.id, model: cfg.model }
-    if (p.id === 'claude') { t.claude_haiku = cfg.claudeHaiku; t.claude_sonnet = cfg.claudeSonnet; t.claude_opus = cfg.claudeOpus }
-    if (p.id === 'codex') { t.codex_models = cfg.codexModels.map((m: string) => { const s = m.indexOf("::"); return s > 0 ? m.slice(s + 2) : m }) }
+    if (p.id === 'claude') { t.claudeHaiku = cfg.claudeHaiku; t.claudeSonnet = cfg.claudeSonnet; t.claudeOpus = cfg.claudeOpus }
+    if (p.id === 'codex') { t.codexModels = cfg.codexModels.map((m: string) => { const s = m.indexOf("::"); return s > 0 ? m.slice(s + 2) : m }) }
     targets.push(t)
   }
   if (targets.length === 0) return
