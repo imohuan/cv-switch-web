@@ -102,7 +102,7 @@ export function useProviderForm() {
       }),
       codex: compactObject({
         defaultModel: formCodexDefault.value || formModel.value,
-        models: formCodexCatalogModels.value.map(m => ({ model: m })),
+        models: formCodexCatalogModels.value.map(m => ({ model: m, inputModalities: ['text', 'image'] })),
       }),
     }
     const payload: Partial<Provider> = {

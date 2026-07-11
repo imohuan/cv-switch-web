@@ -222,8 +222,8 @@ export function generateCodexModelCatalog(provider: Provider): ModelsResponse {
     models: models.map((item, index): ModelInfo => {
       const modelSlug = item.model;
       const displayName = item.displayName || item.model;
-      const contextWindow = Number(item.contextWindow) || 128000;
-      const modalities = (item.inputModalities || ['text']) as InputModality[];
+      const contextWindow = Number(item.contextWindow) || 1000000;
+      const modalities = (item.inputModalities || ['text', 'image']) as InputModality[];
 
       return {
         // ── 基础标识 ──
@@ -335,8 +335,8 @@ export function generateAggregatedModelCatalog(providers: Provider[], modelFilte
       const nameSlug = provider.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || provider.id;
       const fullSlug = nameSlug + "::" + modelSlug;
       const displayName = provider.name + " / " + (item.displayName || modelSlug);
-      const contextWindow = Number(item.contextWindow) || 128000;
-      const modalities = (item.inputModalities || ["text"]) as InputModality[];
+      const contextWindow = Number(item.contextWindow) || 1000000;
+      const modalities = (item.inputModalities || ["text", "image"]) as InputModality[];
 
       allModels.push({
         slug: fullSlug,

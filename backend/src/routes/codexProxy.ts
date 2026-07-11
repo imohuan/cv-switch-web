@@ -143,7 +143,7 @@ router.get('/codex/router/v1/models', (req: Request, res: Response) => {
         wire_api: 'responses',
         tools: true,
         parallel_tool_calls: m.supportsParallelToolCalls ?? true,
-        context_window: Number(m.contextWindow) || 128000,
+        context_window: Number(m.contextWindow) || 1000000,
         input_modalities: m.inputModalities || ['text'],
       });
     }
@@ -175,7 +175,7 @@ router.get('/codex/:providerId/v1/models', (req: Request, res: Response) => {
       wire_api: 'responses',
       tools: true,
       parallel_tool_calls: item.supportsParallelToolCalls ?? true,
-      context_window: Number(item.contextWindow) || 128000,
+      context_window: Number(item.contextWindow) || 1000000,
       input_modalities: item.inputModalities || ['text'],
     })),
   });
